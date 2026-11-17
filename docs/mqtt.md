@@ -2,7 +2,7 @@
 
 ## 📋 文档信息
 
-- **版本**: V2.1（与 PRD V1.1 对齐）
+- **版本**: V2.2（与 PRD V1.1 对齐）
 - **更新日期**: 2026-11-17
 - **Broker**: EMQX Cloud
 - **传输**: MQTT 5.0 over WebSocket (WSS)
@@ -157,7 +157,23 @@ cds/v1/{deviceCode}/presence  显示端 → 服务端   上下线 QoS1, retain=t
   }
 }
 ```
-`contentType`: `text` | `image` | `pdf`；大内容走 R2 预签名 URL 传 `contentUrl`，MQTT 只传引用。
+`contentType`: `text` | `image` | `pdf`；大内容走 R2 预签名 URL 传 `contentUrl`，MQTT 只传引用：
+
+```json
+{
+  "v": 1, "msgId": "m-22", "ts": 1763350000000, "type": "cast.start",
+  "payload": { "castId": "cast_02", "contentType": "pdf",
+               "contentUrl": "https://<r2-private>.r2.cloudflarestorage.com/cast/xxx.pdf?X-Amz-Expires=600&...",
+               "fullScreen": true }
+}
+```
+- 预签名硬约束（D-03）：bucket 私有、URL 只读、有效期 ≤10 分钟、按 `deviceCode` 授权；显示端**不得转存**到公共位置或长期缓存
+- URL 过期/校验失败 → `ack { ok:false, code:4004 }`，服务端重新签发后重发下行
+
+#### 投屏与音乐的关系（D-04）
+- `cast.start` / `cast.end` **不带任何 `player.*` 副作用**：不暂停、不改音量、不动播放位置
+- 投屏期间音乐可继续播放（"配乐 + 板书"场景）；显示端在 `cast` 图层之上继续渲染音频播放，音频元素不被触碰
+- 控制台只做"音乐播放中"提示，是否暂停由操作者手动下发 `player.pause`
 
 #### cast.end
 ```json
@@ -256,5 +272,6 @@ cds/v1/{deviceCode}/presence  显示端 → 服务端   上下线 QoS1, retain=t
 
 ## 9. 变更记录
 
+- **V2.2 (2026-11-17)**：落地 D-03/D-04。`cast.start` 补 `contentUrl` 与 R2 预签名硬约束；明确 `cast.start`/`cast.end` 无 `player.*` 副作用，投屏与音乐相互独立。
 - **V2.1 (2026-11-17)**：删除文章朗读/语速/音量指令；新增 `article.navigate`/`article.scroll`/`article.clear`、`presence`、`ack`、降级轮询；Topic 改为按设备码寻址（单控模式）
 - **V2.0 (2026-11-17)**：初版，按 `class/{classId}/control` 组织

@@ -1,7 +1,7 @@
 # Class Display System - 项目任务跟踪
 
 ## 项目概览
-- **域名**: https://[redacted]
+- **域名**: TODO（待 Jeremyzh 提供正式域名）
 - **GitHub**: https://xget.242500.xyz/gh/jeremystack/class-display-system（github.com 直连超时，统一走代理前缀）
 - **技术栈**: Preact + TS + CF Workers + EMQX MQTT + CF SQLite
 - **当前阶段**: ✅ 阶段 1 完成，准备进入阶段 2

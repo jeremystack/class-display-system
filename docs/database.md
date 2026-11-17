@@ -1,7 +1,7 @@
 # Class Display System 数据库设计文档
 
 ## 📋 文档信息
-- **版本**: V2.1
+- **版本**: V2.2
 - **更新日期**: 2026-11-17 14:20
 - **数据库**: Cloudflare D1 (SQLite)
 
@@ -111,6 +111,11 @@ FROM verses WHERE book_id = ? GROUP BY chapter_sn ORDER BY chapter_sn;
 ```
 
 **说明**: 早期草案里的 `chapters` 表（`chapter_id` 外键）与生产结构不一致，已废弃；`verses` 直接用 `book_id + chapter_sn`。
+
+**裁决 D-01 落地口径**：
+- 章为派生维度，**不建表**；章列表由 `GROUP BY chapter_sn` 得到，接口必须分页（见 `api.md` §3.2）
+- 唯一性约束落在经节粒度 `UNIQUE (book_id, chapter_sn, verse_sn)` —— 一章含多节，`(volume_id, chapter_sn)` 本身**不可能唯一**，故不建该索引；它由上面的复合唯一索引前缀天然覆盖，查询走 `idx_verses_lookup`
+- 卷号唯一性由 `wenzhang_volumes.volume_sn UNIQUE` 保证
 
 ---
 
@@ -245,3 +250,10 @@ books ──> verses (book_id + chapter_sn，章为派生维度)
 
 **审核**: 软件运维交付工程师  
 **时间**: 2026-11-17 13:37
+
+---
+
+## 变更记录
+
+- **V2.2 (2026-11-17)**：落地裁决 D-01（章为派生维度不建表、唯一性落在经节粒度、章列表接口分页），补本轮编辑说明；版本与 `api.md` / `mqtt.md` 对齐。
+- **V2.1 (2026-11-17)**：按生产库 `wenzhang_volumes` / `wenzhang_verses` 校正结构，删除自建 `chapters` 表；文章流程改为阅读导航（人工阅读，无播放控制）。

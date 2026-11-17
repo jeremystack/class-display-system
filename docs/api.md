@@ -2,7 +2,7 @@
 
 ## 📋 文档信息
 
-- **版本**: V2.1（与 PRD V1.1、database.md V2.1 对齐）
+- **版本**: V2.2（与 PRD V1.1、database.md V2.2 对齐；含裁决 D-01~D-04）
 - **更新日期**: 2026-11-17
 - **基础路径**: `/api/v1`
 - **维护人**: 软件开发工程师（接口实现）、软件产品设计（接口定义）
@@ -158,13 +158,20 @@ GET /articles/volumes?testamentSn=&keyword=
 
 ### 3.2 章列表（按 volume_id 聚合 chapter_sn 派生）
 ```
-GET /articles/volumes/{volumeId}/chapters
+GET /articles/volumes/{volumeId}/chapters?pageNum=1&pageSize=100
 ```
 ```json
-{ "code": 0, "data": [ { "chapterSn": 1, "verseCount": 22 }, { "chapterSn": 2, "verseCount": 13 } ] }
+{
+  "code": 0,
+  "data": {
+    "total": 42, "pageNum": 1, "pageSize": 100,
+    "rows": [ { "chapterSn": 1, "verseCount": 22 }, { "chapterSn": 2, "verseCount": 13 } ]
+  }
+}
 ```
-实现：`SELECT chapter_sn, COUNT(*) FROM wenzhang_verses WHERE volume_id = ? GROUP BY chapter_sn ORDER BY chapter_sn`
-（不自建 chapters 表，章是派生维度）
+实现：`SELECT chapter_sn, COUNT(*) AS verse_count FROM wenzhang_verses WHERE volume_id = ? GROUP BY chapter_sn ORDER BY chapter_sn LIMIT ? OFFSET ?`
+- **必须分页**（D-01）：`pageSize` 默认 100、上限 200；诗篇等长卷不允许一次性全量返回
+- 不自建 `chapters` 表，章是派生维度；`(volume_id, chapter_sn)` 天然由经节表约束，不额外造索引
 
 ### 3.3 章内容（经文）
 ```
@@ -290,8 +297,51 @@ POST /cast/start
 POST /cast/end
 { "deviceId": "dev_001" }
 ```
+
+#### 投屏素材上传：申请预签名（`image` / `pdf`）
+```
+POST /cast/presign
+{ "deviceId": "dev_001", "contentType": "pdf", "fileName": "board.pdf", "sizeBytes": 1048576 }
+```
+```json
+{
+  "code": 0,
+  "data": {
+    "assetId": "asset_7f1c",
+    "uploadUrl": "https://<r2-private>.r2.cloudflarestorage.com/cast/asset_7f1c.pdf?X-Amz-Expires=300&...",
+    "uploadMethod": "PUT",
+    "uploadExpiresIn": 300,
+    "contentUrl": "https://<r2-private>.r2.cloudflarestorage.com/cast/asset_7f1c.pdf?X-Amz-Expires=600&...",
+    "contentExpiresIn": 600
+  }
+}
+```
+- 顺序：`presign` → 控制台 `PUT uploadUrl` 上传字节 → `POST /cast/start { contentUrl }`
+- `uploadUrl`（控制台用，写权限，≤5 分钟）与 `contentUrl`（显示端用，只读，≤10 分钟）**分开签发**，互不复用
+- `sizeBytes` 上限 20MB；超限 2001；`contentType` 与 `fileName` 扩展名必须匹配，否则 2001
+- `contentUrl` 按 `deviceCode` 授权，只对本次投屏有效（D-03）
+
+#### 内容载荷与 R2 预签名（D-03）
+- `text` 直接内联 `content`（建议 ≤32KB）
+- `image` / `pdf` 走 R2 预签名 URL：请求体传 `contentUrl` 而不是 `content`
+  ```
+  POST /cast/start
+  { "deviceId": "dev_001", "contentType": "pdf", "contentUrl": "<预签名 URL>", "fullScreen": true }
+  ```
+- 预签名规则（硬约束）：
+  - bucket **私有**，不开启公共读；URL 只读（`GET`），禁止 `PUT/DELETE`
+  - 有效期 **≤10 分钟**（默认 600s）；显示端不得转存到任何公共位置，也不得长期缓存
+  - 授权按 `deviceCode` 维度签发，URL 只对目标设备那一次投屏有效
+  - 过期或被拒 → 显示端 `ack { code: 4004 }`，控制台重新申请（错误码 4093）
+
+#### 投屏与音乐的关系（D-04）
+- **投屏不强制暂停音乐**，两者相互独立，`cast.start` / `cast.end` **不产生任何 `player.*` 副作用**
+- 支持"配乐 + 板书"场景：投屏期间音乐继续播放
+- 控制台在投屏面板只做提示："音乐播放中"，是否暂停由操作者手动决定
+- `cast.end` 只撤销投屏层，音乐/文章画面按进入投屏前的状态复原（见 `docs/前端设计.md` 显示端图层栈）
+
+#### 其它限制
 - 只投屏已有内容，**不支持实时书写同步**（PRD 2.3 限制）
-- 投屏期间音乐自动暂停（产品规则，待确认 9.1）
 
 ---
 
@@ -339,10 +389,12 @@ POST /cast/end
 | 3002 | 第三方音乐接口失败 | 502 |
 | 4091 | 设备已被占用（单控冲突） | 409 |
 | 4092 | 设备码无效或已过期 | 410 |
+| 4093 | 投屏内容 URL 无效 / 预签名已过期，需重新申请 | 410 |
 
 ---
 
 ## 10. 变更记录
 
+- **V2.2 (2026-11-17)**：落地裁决 D-01~D-04。补 `POST /cast/presign`（上传/播放两类 URL 分开签发，供 `docs/前端设计.md` §7.5 使用）；章列表强制分页；`cast.start` 补充 `contentUrl` 与 R2 预签名四条硬约束（私有/只读/≤10 分钟/按 deviceCode 授权）＋错误码 4093；**删除"投屏期间音乐自动暂停"**，明确投屏与音乐相互独立、`cast.start` 无 `player.*` 副作用，控制台仅提示"音乐播放中"。
 - **V2.1 (2026-11-17)**：与 PRD V1.1 对齐，删除文章朗读/语速/音量相关接口；文章改为书卷→章→节导航 + 检索 + 阅读位置；补全第三方映射与错误码
 - **V2.0 (2026-11-17)**：初版，含音乐/文章/设备三组接口

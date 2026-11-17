@@ -273,6 +273,7 @@ POST /api/v1/control/enable
 - [数据库设计文档](./docs/database.md)
 - [API 接口文档](./docs/api.md)
 - [MQTT 通信协议](./docs/mqtt.md)
+- [前端设计（控制台 + 显示端）](./docs/%E5%89%8D%E7%AB%AF%E8%AE%BE%E8%AE%A1.md)
 - [阶段 1 最终评审报告](./Class%20Display%20System%20-%20最终评审报告.md)
 
 ---
