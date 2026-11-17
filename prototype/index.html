@@ -227,11 +227,11 @@ input[type=range]:disabled{opacity:.5}
 .qr{width:220px;height:220px;background:#fff;border-radius:12px;padding:10px;display:grid;grid-template-columns:repeat(21,1fr);grid-template-rows:repeat(21,1fr);gap:0}
 .qr i{display:block}
 /* display music */
-.dMusicCover{width:420px;height:420px;border-radius:28px;position:relative;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+.dMusicCover{width:560px;height:560px;border-radius:32px;position:relative;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.6)}
 .dMusicCover::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 30% 25%,rgba(255,255,255,.35),transparent 45%),radial-gradient(circle at 78% 82%,rgba(0,0,0,.5),transparent 55%)}
 .dLyric{display:flex;flex-direction:column;gap:22px}
-.dLyric div{font-size:40px;line-height:1.35;color:#8b93a3;transition:.3s}
-.dLyric div.cur{font-size:48px;color:#fff;font-weight:600}
+.dLyric div{font-size:44px;line-height:1.35;color:#8b93a3;transition:.3s}
+.dLyric div.cur{font-size:54px;color:#fff;font-weight:600}
 /* display article */
 .dVerse{font-size:30px;line-height:1.75;margin-bottom:18px;color:#e9edf5}
 .dVerse .vn{font-size:18px;color:#7c8698;margin-right:10px;vertical-align:super}
@@ -621,7 +621,7 @@ input[type=range]:disabled{opacity:.5}
           <div class="dMusicCover" style="background:linear-gradient(135deg,#1e3a8a,#0ea5e9)"></div>
           <div style="flex:1;min-width:0">
             <div style="font-size:30px;color:#5b6472;letter-spacing:.2em">NOW PLAYING</div>
-            <div style="font-size:64px;font-weight:700;margin-top:16px" id="dSongTitle">云上太阳</div>
+            <div style="font-size:76px;font-weight:700;margin-top:16px" id="dSongTitle">云上太阳</div>
             <div style="font-size:28px;color:#9aa3b2;margin-top:12px" id="dSongMeta">主音轨 · 04:12</div>
             <div class="dLyric" style="margin-top:60px" id="dLyric"></div>
             <div style="margin-top:70px;height:8px;background:#1b2431;border-radius:99px;overflow:hidden">
@@ -639,7 +639,7 @@ input[type=range]:disabled{opacity:.5}
         <div style="position:absolute;inset:0;background:#05070b"></div>
         <div class="safe">
           <div style="font-size:28px;color:#5b6472;letter-spacing:.16em">诗篇 · 第 23 篇</div>
-          <div style="flex:1;margin-top:48px" id="dVerses"></div>
+          <div style="flex:1;margin-top:48px;display:flex;flex-direction:column;justify-content:center" id="dVerses"></div>
           <div style="display:flex;justify-content:space-between;align-items:center;font-size:24px;color:#6b7280">
             <span>人工阅读 · 翻屏由控制台操作</span>
             <span id="dPage">第 1 屏 / 共 2 屏</span>
@@ -971,7 +971,7 @@ function renderDisplayMusic(cur){
   var pct = m.started ? Math.min(100, pos / s.dur * 100) : 0;
   byId('dBar').style.width = pct + '%';
   byId('dPos').textContent = fmt(pos);
-  byId('dDur').textContent = fmt(m.started ? s.dur : 0);
+  byId('dDur').textContent = fmt(s.dur);
   // 文章层 mini 播放条
   byId('dMiniTitle').textContent = s.title;
   byId('dMiniPos').textContent = fmt(pos) + ' / ' + fmt(s.dur);
