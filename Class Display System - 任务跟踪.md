@@ -2,7 +2,7 @@
 
 ## 项目概览
 - **域名**: https://[redacted]
-- **GitHub**: https://github.com/jeremystack/[redacted].git
+- **GitHub**: https://xget.242500.xyz/gh/jeremystack/class-display-system（github.com 直连超时，统一走代理前缀）
 - **技术栈**: Preact + TS + CF Workers + EMQX MQTT + CF SQLite
 - **当前阶段**: ✅ 阶段 1 完成，准备进入阶段 2
 
@@ -21,11 +21,11 @@
 | 任务模块 | 负责人 | 状态 | 截止时间 |
 |----------|--------|------|----------|
 | 播放器 UI | 产品 + 开发 | ⏳ | 11-25 |
-| 文章朗读 UI | 产品 + 开发 | ⏳ | 11-25 |
+| 文章阅读导航 UI | 产品 + 开发 | ⏳ | 11-25 |
 | 板书投屏 UI | 产品 + 开发 | ⏳ | 11-25 |
 | 设备管理 API | 开发 | ⏳ | 11-25 |
 | 音乐控制 API | 开发 | ⏳ | 11-25 |
-| 文章控制 API | 开发 | ⏳ | 11-25 |
+| 文章导航 API | 开发 | ⏳ | 11-25 |
 | 环境搭建 | 运维 | ⏳ | 11-20 |
 | 监控配置 | 运维 | ⏳ | 11-22 |
 
@@ -37,9 +37,10 @@
 ## 关键文档 (V2 完成版)
 - [最终评审报告](./Class Display System - 最终评审报告.md)
 - [第三方 API 审核](./Class Display System - 第三方接口审核.md)
-- [数据库设计 v2](docs/database-v2.md)
-- [音乐 API v2](docs/api-v2.md)
-- [文章表结构 v2](docs/article-v2.md)
+- [产品需求文档 V1.1](./Class%20Display%20System%20-%20产品需求文档.md)
+- [数据库设计 V2.1](docs/database.md)
+- [API 接口文档 V2.1](docs/api.md)
+- [MQTT 协议 V2.1](docs/mqtt.md)
 
 ## 变更记录
 - 2026-11-17 13:37: 开始审核第三方 API

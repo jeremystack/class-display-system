@@ -1,0 +1,25 @@
+# 开发临时文件（不入库）
+tmp/
+*.tmp
+
+# 依赖与构建产物
+node_modules/
+dist/
+build/
+.wrangler/
+.output/
+
+# 环境变量与本地密钥
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+
+# 编辑器 / 系统
+.DS_Store
+.idea/
+.vscode/
+*.log
+*.sqlite
+*.sqlite3

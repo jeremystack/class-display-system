@@ -1,8 +1,8 @@
 # Class Display System 数据库设计文档
 
 ## 📋 文档信息
-- **版本**: V2.0
-- **更新日期**: 2026-11-17 13:37
+- **版本**: V2.1
+- **更新日期**: 2026-11-17 14:20
 - **数据库**: Cloudflare D1 (SQLite)
 
 ---
@@ -101,17 +101,16 @@ CREATE TABLE books (
 
 ---
 
-### 6. 章节表 (chapters)
+### 6. 章节（派生维度，不单独建表）
+生产库 `wenzhang_verses` 直接带 `chapter_sn`，章不需要独立表，按需聚合：
+
 ```sql
-CREATE TABLE chapters (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    book_id INTEGER NOT NULL,
-    chapter_sn INTEGER NOT NULL,
-    title TEXT,
-    verse_count INTEGER DEFAULT 0,
-    FOREIGN KEY (book_id) REFERENCES books(id)
-);
+-- 章列表
+SELECT chapter_sn, COUNT(*) AS verse_count
+FROM verses WHERE book_id = ? GROUP BY chapter_sn ORDER BY chapter_sn;
 ```
+
+**说明**: 早期草案里的 `chapters` 表（`chapter_id` 外键）与生产结构不一致，已废弃；`verses` 直接用 `book_id + chapter_sn`。
 
 ---
 
@@ -119,11 +118,13 @@ CREATE TABLE chapters (
 ```sql
 CREATE TABLE verses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    chapter_id INTEGER NOT NULL,
+    book_id INTEGER NOT NULL,          -- 对应 wenzhang_verses.volume_id
+    chapter_sn INTEGER NOT NULL,
     verse_sn INTEGER NOT NULL,
     verse_txt TEXT NOT NULL,
-    FOREIGN KEY (chapter_id) REFERENCES chapters(id)
+    UNIQUE (book_id, chapter_sn, verse_sn)
 );
+CREATE INDEX idx_verses_lookup ON verses(book_id, chapter_sn, verse_sn);
 ```
 
 ---
@@ -142,7 +143,7 @@ CREATE TABLE playback_state (
 );
 ```
 
-**说明**: 用于存储实时播放状态
+**说明**: 只存**音乐**播放状态。文章阅读位置（书卷/章/锚点节）单独走 `PUT /api/v1/articles/position`，不进本表
 
 ---
 
@@ -170,7 +171,7 @@ users ──> devices
 music_categories ──> music_items
          |
          | 
-books ──> chapters ──> verses
+books ──> verses (book_id + chapter_sn，章为派生维度)
 ```
 
 **注意**: 
@@ -188,12 +189,12 @@ books ──> chapters ──> verses
 4. 播放器获取 `audio_url` 开始播放
 5. 实时同步播放状态到 `playback_state`
 
-### 文章朗读流程
-1. 用户选择书籍 (`books`)
-2. 加载章节列表 (`chapters`)
-3. 用户选择具体章，加载经节 (`verses`)
-4. 朗读控制：播放/暂停、进度调节、音量调节
-5. 显示滚动与朗读进度同步
+### 文章阅读流程（人工导航，无播放控制）
+1. 用户选择书卷 (`books`，对应生产库 `wenzhang_volume`)
+2. 按 `volume_id` 聚合 `chapter_sn` 得到章列表（`SELECT chapter_sn, COUNT(*) ... GROUP BY chapter_sn`），不单独建章表
+3. 用户选择具体章，按 `volume_id + chapter_sn` 加载经节 (`verses`)
+4. 前端纯文本展示经文，人工逐屏阅读（页面滚动 / 翻页 / 字号缩放）
+5. 仅记录阅读位置（书卷、章、锚点节），**不做朗读、语速、音量、播放进度同步**
 
 ---
 
