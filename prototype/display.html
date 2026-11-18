@@ -145,9 +145,22 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   // ── 样式（本地缓存优先，避免闪字） ──
   // V2.1.11：每行字数默认 auto（按屏宽 ÷ 字号派生）；手动档只在老师拖过滑块后生效
   var STYLE_CPL='auto';
+  var STYLE_FPX='auto';            // 'auto' = 按视口高派生；数字 = 控制台显式指定（换屏不重算）
   var WARN_SCALE=false;
+  // V2.2.15：缺省字号必须派生。旧码 applyStyle(null) 直接 return，未缓存样式的显示端停在 CSS 72px，
+  // 4K（CSS 3840）上 auto 便得 24x72=1728 = 半屏宽——正是 144px 那条几何缺陷的另一半。
+  function deriveFpx(){
+    var _h=window.innerHeight||1080;
+    return Math.max(24, Math.min(160, Math.round(_h*0.067/4)*4));   // 720p 48 / 1080p 72 / 1440p 96 / 2160p 144
+  }
+  function applyFpx(){
+    var f=(STYLE_FPX==='auto')?deriveFpx():STYLE_FPX;
+    f=Math.max(24, Math.min(160, f));
+    document.documentElement.style.setProperty('--cds-font-size', f+'px');
+    return f;
+  }
   function applyStyle(st){
-    if(!st) return;
+    st = st || {};                 // V2.2.15：无本地缓存也要派生字号，不得停在 CSS 默认值
     var r=document.documentElement.style;
     if(st.fontFamily && st.fontFamily.body){
       var map={song:'"Songti SC","Noto Serif SC",serif',hei:'"PingFang SC","Microsoft YaHei",sans-serif',kai:'"Kaiti SC",KaiTi,serif','system-ui':'system-ui,sans-serif'};
@@ -156,10 +169,10 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     // V2.2.13：fontScale **作废**——收到忽略并在 ack.note 里 warn。
     // 旧实现按 ×18 折算 px，fontScale:1.0 会得 18px（字直接小到墙脚），已删。
     if(st.fontScale!=null) WARN_SCALE=true;
-    var fpx = (st.fontSizePx && st.fontSizePx!=='auto') ? +st.fontSizePx : null;
-    // V2.1.11：缺省／auto ⇒ 按本机屏高派生 round4(H×6.7%)（720p 48 / 1080p 72 / 1440p 96 / 2160p 144）
-    if(!fpx){ var _h=window.innerHeight||1080; fpx=Math.max(24, Math.min(160, Math.round(_h*0.067/4)*4)); }
-    if(fpx) r.setProperty('--cds-font-size', Math.max(24, Math.min(160, fpx)) + 'px');
+    // V2.2.15：显式值锁进 STYLE_FPX（换屏/缩放不重算）；缺省或 'auto' ⇒ 每次按视口高派生
+    var _f=+st.fontSizePx;
+    STYLE_FPX=(st.fontSizePx!=null && st.fontSizePx!=='auto' && isFinite(_f)) ? Math.max(24, Math.min(160, _f)) : 'auto';
+    applyFpx();
     if(st.lineHeight) r.setProperty('--cds-line-height', st.lineHeight);
     if(st.fg){ r.setProperty('--cds-fg', st.fg); }
     if(st.bg){ r.setProperty('--cds-bg', st.bg); }
@@ -178,11 +191,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     BC.postMessage({kind:'styleApplied',
       effective:{fontSizePx:epx, lineHeight:elh, charsPerLine:cplNow(_b)}, note:note||''});
   }
-  // V2.1.12：**无缓存样式时也要走派生**（字号 = round4(屏高×6.7%)、每行字数 = auto）。
-  // 原写法 applyStyle(null) 在里面直接 return，未收过 display.style 的显示端会停在 CSS 的 72px——
-  // 在 4K 上等于只画到半屏宽（W=3456，72px×24=1728），与 §7.5.3「默认＝派生」不一致。
-  var _st=null; try{ _st=JSON.parse(LS.getItem('cds.style')||'null'); }catch(e){}
-  applyStyle(_st||{});
+  try{ applyStyle(JSON.parse(LS.getItem('cds.style')||'null')); }catch(e){}
 
   // ── 心跳（供控制台算"在线终端数"） ──
   function beat(){ if(LS.getItem('cds.bound')) LS.setItem('cds.displayBeat', String(Date.now())); }
@@ -231,18 +240,8 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     var F=parseFloat(document.documentElement.style.getPropertyValue('--cds-font-size'))||72;
     return Math.max(6, Math.min(24, Math.floor((W||1728)/F)));
   }
-  function usableW(body){
-    // V2.1.12：可用宽＝正文块的内容宽。**不能拿 #content.clientWidth**——它含 5vw 左右 padding，
-    // 在 1280 屏会读到 1280（真可用 1152），每行多排 2 字并把行尾裁掉（overflow:hidden 下是静默的）。
-    if(body && body.clientWidth){
-      var cs=getComputedStyle(body);
-      return body.clientWidth - (parseFloat(cs.paddingLeft)||0) - (parseFloat(cs.paddingRight)||0);
-    }
-    // 渲染期 .body 尚未插入：正文块恒为视口宽的 90%（#content 的 5vw×2）
-    return Math.max(240, (window.innerWidth||1280) * 0.9);
-  }
   function cplNow(body){
-    var W=usableW(body), cap=cplMax(W);
+    var W=body?body.clientWidth:1728, cap=cplMax(W);
     if(STYLE_CPL==='auto') return cap;
     var c=parseInt(STYLE_CPL,10); if(!c) return cap;
     return Math.max(6, Math.min(cap, c));
@@ -375,7 +374,8 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
       pageIndex:A.pageIndex, pageCount:A.pageCount, sectionIndex:A.sectionIndex,
       sectionCount:A.sectionCount, viewLines:A.viewLines});   // 恒 7 字段：totalLines / charsPerLine 都不上行
   }
-  // 显示端实测几何（原型内部消息，不进 MQTT 协议）：控制台的「每行上限」必须按这个算，
+  // 显示端实测几何（＝协议 state.report.layout，原型内用 BroadcastChannel 走同名消息）：
+  // 控制台的「每行上限」必须按这个算（availW 与 fontSizePx 同一帧），
   // 否则 1280 屏可用宽 1152（真上限 18）会按 1728 算出 24，锁了 24 被显示端静默收紧回 18。
   var _mt=null;
   function postMetrics(){
@@ -393,7 +393,10 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   // mqtt §4.6：W/H 或三参任一变化 ⇒ 重测 → 重算 → **重发 pageMap**（auto 下 pageCount 随屏变）
   function relayoutArticle(){ if(S.scene!=='article'||!A.ready) return; layoutArticle(); }
   (function watchGeometry(){
-    function kick(){ clearTimeout(window._rz); window._rz=setTimeout(relayoutArticle,200); }
+    function kick(){ clearTimeout(window._rz); window._rz=setTimeout(function(){
+      if(STYLE_FPX==='auto') applyFpx();     // 窗口化<->全屏换屏：派生字号必须跟着视口高走
+      relayoutArticle();
+    },200); }
     if(window.ResizeObserver){
       var ro=new ResizeObserver(kick);
       var host=document.getElementById('content'); if(host) ro.observe(host);
@@ -436,7 +439,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     var root=document.documentElement.style;
     var F0=parseFloat(root.getPropertyValue('--cds-font-size'))||72;
     var LH0=parseFloat(root.getPropertyValue('--cds-line-height'))||1.75;
-    var CP0=STYLE_CPL, changed=[], done=false;
+    var CP0=STYLE_CPL, FPX0=STYLE_FPX, changed=[], done=false;
     layoutArticle(true);
     if(A.pageCount<=1){ postPageMap(); sendStyleApplied('整章一屏：已是一屏，未动样式'); return; }
     function fits(){ layoutArticle(true); return A.pageCount<=1; }
@@ -456,18 +459,26 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     var px=F0;
     while(!done && px>24){
       px=Math.max(24, px-4);
-      root.setProperty('--cds-font-size', px+'px');
+      STYLE_FPX=px; root.setProperty('--cds-font-size', px+'px');
       if(fits()){ changed.push('字号 '+F0+'→'+px+'px'); done=true; }
     }
     if(!done){                                              // 回滚：宁可不动，也不留半套
       root.setProperty('--cds-line-height', LH0);
-      root.setProperty('--cds-font-size', F0+'px');
-      STYLE_CPL=CP0; layoutArticle(true);
+      STYLE_CPL=CP0; STYLE_FPX=FPX0; applyFpx();
+      layoutArticle(true);
       postPageMap(); sendStyleApplied('整章一屏：已到最小（行距 1.2 / 字号 24）仍 '+A.pageCount+' 屏，未改样式');
       sys('整章一屏：已到最小仍 '+A.pageCount+' 屏，样式已还原', false, 3600);
       return;
     }
-    var note='整章一屏：'+changed.join('、');
+    // V2.2.15：note 必须写全「与点击前不同」的每一档——②抬高 cpl 但靠③才成一屏时 cpl 也变了，
+    // 只报字号会让老师看到「每行 N 字」变了而 note 没提（effective 带真值，note 漏报同样是口径不一致）
+    var FX=parseFloat(root.getPropertyValue('--cds-font-size'))||F0;
+    var LHX=parseFloat(root.getPropertyValue('--cds-line-height'))||LH0;
+    var parts=[];
+    if(Math.abs(LHX-LH0)>1e-9) parts.push('行距 '+LH0.toFixed(2)+'→'+LHX.toFixed(2));
+    if(String(STYLE_CPL)!==String(CP0)) parts.push('每行 '+CP0+'→'+STYLE_CPL+' 字');
+    if(Math.abs(FX-F0)>1e-9) parts.push('字号 '+F0+'→'+FX+'px');
+    var note='整章一屏：'+(parts.length?parts.join('、'):'未动样式');
     postPageMap();
     sendStyleApplied(note);                                 // effective 三值只走 styleApplied，不进 pageMap
     sys(note, false, 3600);
@@ -499,7 +510,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     } else if(S.scene==='article'){
       var a=S.article.items[S.article.idx]||{t:'诗篇 23 章',v:'诗篇',ch:23};
       var vs=VERSES[a.ch]||VERSES[23]; A.verses=vs;
-      var cpl=cplNow(null);   // V2.1.12：见 usableW()，#content 的 clientWidth 含 padding
+      var cpl=cplNow(document.getElementById('content'));
       html='<div class="article"><div class="head"><b>'+esc(a.t)+'</b><span class="seg"></span></div>'+
         '<div class="body"><div class="flow">'+vs.map(function(v){
           var ls=sliceLines(v[1], cpl);
