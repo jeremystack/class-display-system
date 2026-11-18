@@ -2,7 +2,7 @@
 
 ## 📋 文档信息
 
-- **版本**: V2.2.4（V2.2 基线 + V2.2.2 §4.5 响应体 / 兜底路由订正 + V2.2.3 字段语义定稿 + V2.2.4 §4.4 `online` 口径对齐，见 §10 变更记录）
+- **版本**: V2.2.5（V2.2 基线 + V2.2.2 §4.5 响应体 / 兜底路由订正 + V2.2.3 字段语义定稿 + V2.2.4 §4.4 `online` 口径对齐 + **V2.2.5 设备与控制码接口按 CO-2026-11-18-05 改判**，见 §10 变更记录）
 - **更新日期**: 2026-11-18
 - **基础路径**: `/api/v1`
 - **维护人**: 软件开发工程师（接口实现）、软件产品设计（接口定义）
@@ -19,6 +19,15 @@
 ```
 Authorization: Bearer <JWT>
 ```
+
+**显示端（设备）接口另有一套凭据（V2.2.5，CO-05）**：
+
+```
+Authorization: Device <deviceToken>
+```
+- `deviceToken` 由 §4.1 注册时签发，长期有效（不自动过期），随绑定一起被撤销
+- 显示端接口**只认设备凭据**，**不得**用控制码换取任何状态或权限——码长期有效之后，「按码查」＝一条永久枚举通道（§4.7）
+- 控制端接口仍只认 JWT；两类凭据不通用
 
 ### 0.2 响应包络
 ```json
@@ -206,7 +215,9 @@ PUT /articles/position
 
 ---
 
-## 4. 设备（单控模式 + 设备码）
+## 4. 设备与控制码（一用户多屏，CO-2026-11-18-05）
+
+> V2.2.5 整节改判：控制码从「设备级一次性票据（6 位 / 30 秒 / 15 分钟 TTL / 绑定即 used）」改为**用户级 8 位数字、存库、长期有效**。旧口径与本文 §10 的 V2.0–V2.1 条目一并作废（历史条目保留原文以便追溯）。
 
 ### 4.1 显示端注册
 ```
@@ -214,25 +225,37 @@ POST /devices/register
 { "deviceName": "显示端-01", "clientType": "browser", "fingerprint": "..." }
 ```
 ```json
-{ "code": 0, "data": { "deviceId": "dev_001", "deviceCode": "482913", "codeExpiresAt": 1763350300000 } }
+{ "code": 0, "data": { "deviceId": "dev_001", "deviceToken": "<设备凭据>", "tokenExpiresIn": 0 } }
 ```
-- `deviceCode` 6 位数字，30 秒刷新（见 PRD 3.2），仅用于**首次绑定**
+- `deviceToken` 是**长期设备凭据**：服务端签发、明文只回一次、库内存 `sha256`（不入库明文）；`tokenExpiresIn: 0` ＝ **不自动过期**，只在「移出接管」（§4.3）或刷新控制码（§4.7）时随绑定一起撤销
+- **已删除（V2.2.5）**：`deviceCode`、`codeExpiresAt`、`codeFormat` —— CO-05 下码是**用户级**的（存 `control_codes`，见 `database.md`），设备注册**不再产生任何码**，也不再有「30 秒刷新」或「格式配置」
+- 注册后**未绑定**的显示端只有 `deviceId` + `deviceToken`；「我属于谁」用 §4.6 自检（`userId: null` ＝ 未绑定）
 
-### 4.2 控制端绑定（单控）
+### 4.2 控制端绑定（一码多屏）
 ```
 POST /devices/bind
-{ "deviceCode": "482913" }
+Authorization: Device <deviceToken>
+{ "code": "48291370" }
 ```
 ```json
-{ "code": 0, "data": { "deviceId": "dev_001", "bound": true, "ownerId": "user_001" } }
+{ "code": 0, "data": { "deviceId": "dev_001", "bound": true, "ownerId": "user_001", "boundAt": 1763350000000 } }
 ```
-- 设备已被他人绑定时返回 `4091 设备已被占用`，需先解绑
+- `code` **8 位数字**；`ownerId` 即 `userId`（字段名沿用外部形状，不新增同义字段）
+- **同一张码可绑同户任意多台**（不同 `deviceId`）：第 2/3 台直接接管，先绑的屏**不掉线、不报错**。绑定**不消费码、不换码、不续码**
+- `4091 设备已被占用` **只针对同一个 `deviceId` 已被其他用户绑定**——不同 `deviceId` 永远不会撞 4091；同户「踢出后重绑同一张码」是正常成功并记 `rebind` 审计，**不是** 4091
+- `4092` 码无效（**不存在 / 已被轮换**统一回答，不区分，防枚举）；同一 IP 1 分钟内第 11 次 ⇒ `4094`
+- 副作用（同一次请求内）：写 `device_bindings`（`user_id` / `bound_at`）＋ 覆盖 `cds/v1/d/{deviceId}/bind` 快照 `{state:'bound', userId}`，同一事务边界（`mqtt.md` §3、V2.2.23）
 
-### 4.3 解绑
+### 4.3 移出接管（踢出单台）
 ```
 POST /devices/unbind
+Authorization: Bearer <JWT>
 { "deviceId": "dev_001" }
 ```
+- 语义（CO-05）：只撤销**这一台**的绑定 ⇒ `device_bindings.revoked_at = now` + 一条 `device_bind_events(action='kick')`；**不封禁**，该屏可用**同一张码立即重绑**（再记一条 `rebind` 审计）
+- 同一请求内的副作用：覆盖 `cds/v1/d/{deviceId}/bind` 快照 `{state:'revoked', reason:'kicked'}`；向 `u/{userId}/state/{deviceId}`、`u/{userId}/presence/{deviceId}` 各发空 payload 清 retained（**由服务端做，不由显示端做**，`mqtt.md` §1.2 / V2.2.24）；写库＋快照＋清 retained 同一事务边界
+- 权限：`device_bindings.user_id == token.sub`，否则 `1003`；设备不存在 `1002`
+- **不得**新增「按码撤销 / 按码解绑」接口（`/bind/{code}` 一类）
 
 ### 4.4 设备列表与状态
 ```
@@ -293,6 +316,43 @@ GET /devices/{deviceId}/state
 - **只读**：本接口不产生下行、不改 `playback_state`。控制指令走 §5，降级期间 §5 响应 `delivered: "polling"`。
 - **权限**：`device.user_id == token.sub`，否则 `1003`；设备不存在 `1002`。
 - **不得把 `nowPlaying` 当播放位置的权威来源**：`playback_state` 只由控制页 REST 播放控制写入（`mqtt.md` §4.4），此处仅供展示与对账。
+
+### 4.6 设备自检（凭设备凭据；启动与重连的判据）
+```
+GET /devices/me
+Authorization: Device <deviceToken>
+```
+```json
+{ "code": 0, "data": { "deviceId": "dev_001", "state": "bound", "userId": "user_001", "boundAt": 1763350000000, "reason": null } }
+```
+- `state` ∈ `bound` / `revoked` / `unbound`（`unbound` ＝ 从未绑定），与 `device.bindState` 快照**同一状态机**（`mqtt.md` §3）
+- `reason` ∈ `code_rotated` / `kicked` / `unbind`，**只决定文案**，不得当事件触发器
+- **只按设备凭据回答「我这条绑定还有效吗」**：请求体/查询串里**不得**带控制码，路径里**不得**有码段；凭据不符 ⇒ `1001`，且**不泄露**其他用户的绑定信息（不可枚举）
+- 用途：`mqtt.md` §6-2 启动顺序第 ① 步（先拿 `userId` 才能注册 LWT）以及重连后的对齐
+- **DB 为准（V2.2.24 口径）**：本接口读 `device_bindings`，**不读** retained 快照；快照缺失/不符时以本接口为准并由服务端补写快照——**不得**因「`d/{deviceId}/bind` 上没有 retained」就判未绑定
+
+### 4.7 控制码（控制端；每用户一张、长期有效）
+```
+GET /control-code
+Authorization: Bearer <JWT>
+```
+```json
+{ "code": 0, "data": { "userId": "user_001", "code": "48291370", "rotatedAt": 1763350000000 } }
+```
+```
+POST /control-code/rotate
+Authorization: Bearer <JWT>
+```
+```json
+{ "code": 0, "data": { "userId": "user_001", "code": "73910284", "rotatedAt": 1763350060000, "revokedCount": 2 } }
+```
+- **路径不带码（V2.2.5 红线）**：不得新增 `GET /control-code/{code}`、`POST /bind/{code}` 一类接口。码长期有效之后，「按码查状态」就是一条**永不关闭的枚举通道**；验收 C1 的 `rg -i 'control-code/\{|/bind/\{'` 必须保持 0 命中
+- `code` 固定 **8 位数字**：无 `codeFormat`、无 `expiresAt`、无倒计时（`rg -i 'expiresAt|codeFormat|countdown'` 应 0 命中）
+- `rotate` 语义（⟳ ＝ 更新控制码 ＝ 重置接管）：**换码 + 撤销该用户全部绑定**——`control_codes.rotated_at` 更新、该用户所有 `device_bindings.revoked_at = now`（`reason=code_rotated`）、逐台覆盖 `d/{deviceId}/bind` 快照并清各台 retained，**同一事务边界**
+  - **只换码不撤绑定＝按失败记**：旧屏会拿旧码继续被控，正是 CO-05 要消灭的状态
+  - 绑定成功后**不自动续码**、码**不被消费**（`rg -i 'reissueCode|code_issued'` 应 0 命中）
+- `revokedCount` ＝ 本次被撤销的绑定数。控制台二次确认里的 N **取 `GET /devices/list` 的 `online:true` 计数**（在线可被踢的台数），不得用本值替代（两者不同：离线屏也要撤，但不会在 3s 内回输码页）
+- 权限：只能读写 **`token.sub` 自己**的码；跨用户 ⇒ `1003`
 
 ---
 
@@ -359,7 +419,7 @@ POST /cast/presign
 - 顺序：`presign` → 控制台 `PUT uploadUrl` 上传字节 → `POST /cast/start { contentUrl }`
 - `uploadUrl`（控制台用，写权限，≤5 分钟）与 `contentUrl`（显示端用，只读，≤10 分钟）**分开签发**，互不复用
 - `sizeBytes` 上限 20MB；超限 2001；`contentType` 与 `fileName` 扩展名必须匹配，否则 2001
-- `contentUrl` 按 `deviceCode` 授权，只对本次投屏有效（D-03）
+- `contentUrl` **按 `deviceId` ＋ `assetId` 授权**，只对本次投屏有效（D-03 于 V2.2.5 改判）：签发时用 JWT 校验 `device_bindings.user_id == token.sub` 且未 `revoked`；**不得按 `deviceCode` 签发**——新流程下 `deviceCode` 是哨兵串（`'x'||device_id`，见 `migrations/0005` rev2 草案），恒定可猜，拿它当授权维度等于没有授权
 
 #### 内容载荷与 R2 预签名（D-03）
 - `text` 直接内联 `content`（建议 ≤32KB）
@@ -371,7 +431,7 @@ POST /cast/presign
 - 预签名规则（硬约束）：
   - bucket **私有**，不开启公共读；URL 只读（`GET`），禁止 `PUT/DELETE`
   - 有效期 **≤10 分钟**（默认 600s）；显示端不得转存到任何公共位置，也不得长期缓存
-  - 授权按 `deviceCode` 维度签发，URL 只对目标设备那一次投屏有效
+  - 授权按 **`deviceId` ＋ `assetId`** 维度签发，URL 只对目标设备那一次投屏有效；**不得**把控制码或 `deviceCode` 放进 URL / 查询串
   - 过期或被拒 → 显示端 `ack { code: 4007 }`（V2.3 新增码；**不得沿用 4004**——4004 在 `mqtt.md` §8 是"音频地址不可达"），控制台重新申请（错误码 4093）
 
 #### 投屏与音乐的关系（D-04 已废弃；按 V2.1.2 定稿，2026-11-18）
@@ -428,8 +488,8 @@ POST /cast/presign
 | 2002 | 分页参数越界 | 400 |
 | 3001 | 服务器内部错误 | 500 |
 | 3002 | 第三方音乐接口失败 | 502 |
-| 4091 | 设备已被占用（单控冲突） | 409 |
-| 4092 | 设备码无效或已过期 | 410 |
+| 4091 | 设备已被占用：**同一 `deviceId`** 已被**其他用户**绑定（同码绑同户多台**不**触发） | 409 |
+| 4092 | 控制码无效（**不存在 / 已被轮换**统一回答，不区分，防枚举） | 400 |
 | 4093 | 投屏内容 URL 无效 / 预签名已过期，需重新申请 | 410 |
 | 4094 | 尝试过于频繁（控制码按 IP 10 次/分钟；指数退避） | 429 |
 | 4095 | 音频锚点已被其他终端占用（另一窗口/终端正在播放） | 409 |
@@ -441,6 +501,8 @@ POST /cast/presign
 
 ## 10. 变更记录
 
+- **V2.2.5 (2026-11-18)**：**设备与控制码接口按 CO-2026-11-18-05 改判**（Jeremyzh 20:11 定案；产品 V2.1.26/2.1.27 已把验收与原型改成同一口径，commit `63e9468`）。① **§4.1 注册**：删 `deviceCode`/`codeExpiresAt`/`codeFormat`，改发**长期设备凭据** `deviceToken`（`tokenExpiresIn: 0`）——设备注册不再产生任何码。② **§4.2 绑定**：请求体 `{code}`（**8 位数字**），**同码可绑同户任意多台**、不消费/不换码/不续码；明确 `4091` **只针对同一 `deviceId` 被其他用户绑定**，同户重绑不是 4091。③ **§4.3 解绑→「移出接管」**：只撤单台、不封禁、可立即用同码重绑、记 `kick`/`rebind` 审计；副作用（覆盖 `bind` 快照 + 服务端清两条 retained）与写库同事务。④ **新增 §4.6 `GET /devices/me`**：显示端**只凭设备凭据**问「我这条绑定还有效吗」，不带码、不可枚举、以 DB 为准（快照缺失不得判未绑定）——这是 `mqtt.md` §6-2 启动顺序第 ① 步的载体。⑤ **新增 §4.7 `GET /control-code` / `POST /control-code/rotate`**：每用户一张 8 位数字、长期有效；`rotate` ＝ 换码 + 撤销该用户全部绑定；**路径不带码**（红线：`control-code/{code}`、`bind/{code}` 一律不得新增）。⑥ **§6 预签名授权维度改判（D-03）**：`contentUrl` 按 `deviceId`＋`assetId` 签发，**不再按 `deviceCode`**（哨兵串恒定可猜）。⑦ **§9**：`4091` 语义收窄、`4092` 改为「控制码无效」且 HTTP `410 → 400`（码不再过期，Gone 不成立）；**4092 的 HTTP 状态码请产品确认**。**零数据库形状变更于本文件**：表结构见 `database.md` 与 `migrations/0005` rev2 草案。
+  - **本文档外仍待改（不在本版授权范围，已报产品）**：验收 C1 的 L175/L176/L177 仍写「6 位数字 / 8 位 Base32 按配置」「控制码 15 分钟内有效」「`reason=expired`」——CO-05 下全部作废（8 位数字、长期有效、无 expires 概念）；B2 里「`devices.revoked_at = now`」引用了不存在的列，按 `database.md` V2.2.1 应改为 `device_bindings.revoked_at`。
 - **V2.2.4 (2026-11-18)**：**§4.4 `GET /devices/list` 的 `online` 口径对齐 §4.5**（产品 V2.1.25，commit `706e2f5` 要求：控制台取「台数 N」用本接口，两处 `online` 不得各说各话）。① §4.4 补口径句：`now − lastSeenAt ≤ 75s` **且** broker 侧无存活连接，两者缺一即 `false`；**不得转抄 retained `presence`/`state`**。② 文档信息头版本回填 **V2.2.2 → V2.2.4**（V2.2.3 已改正文与变更记录但漏改头，按头回溯会判成「这条口径不存在」，同 R-02）。**零 schema 变更**：`/devices/list` 响应形状不动，不新增错误码。
 - **V2.2.3 (2026-11-18)**：**§4.5 响应体按产品 V2.1.24 确认定稿**（变更单 §4.24，commit `dfe423a`）。① `viewing` **进 L1**（原写「暂不进」）：`viewing` 本来就在 `mqtt.md` §4.4 的 `state.report` 里，而 `pageMap.anchor` 缺 `volumeId`/`chapterSn`，轮询降级会丢「哪一章」；`casting`（由 `scene=="cast"` 推得）/ `appVersion`（运维登记）**仍不进**。② `stateTs` **不得用统一阈值判过期**：`scene=music` ⇒ `>15s` 标「快照 N 秒前」，`article`/`cast`/`standby` 不按时间判、只附相对时间（文章只在切章/位置变化时上报，统一阈值会把正常场景判成陈旧）。③ `online:false` 时**不得清空** `lastSeenAt`/`stateTs`/L1 字段，且 `online` 与 `stateTs` 互不替代。④ 乱序裁剪补判据：构造 `ts` 倒退的 report，两条通道 `pageIndex` 都不得后退。⑤ 无上报时 **四个** L1 字段为 `null`（含 `viewing`）。**零 schema 变更**，`state.report` 形状不动，不新增错误码。
 - **V2.2.2 (2026-11-18)**：**`GET /devices/{deviceId}/state` 补齐响应体 + 兜底路由订正**（Chief 19:28 分工：开发起草 / 产品确认字段语义 / 运维出断言；起因：产品 V2.1.18 核实「`layout` 缺口在 REST 不在协议」，本文件 `layout` 曾 0 命中、§4.5 只有路由无响应体）。① 响应体字段**三层分源**：L1 `nowPlaying`/`pageMap`/`layout` 从 `state.report` **同名同形照搬**（`pageMap` 恒 7 字段、`layout` 恒 5 项；不改名/不裁剪/不补默认值），L2 `deviceId`/`owner`/`scene`/`lastSeenAt`/`stateTs` 由服务端登记表给出，L3 `online` 由 `presence`/心跳派生；② 明令 **`online` 不得转抄 `state.report.online`**（retained `state` 离线仍是 `online:true`），口径 `now − lastSeenAt ≤ 75s` **且** broker 侧无存活连接；③ 无上报时 L1 三字段为 `null`（不得伪造 `{}`/`0`），控制台 `c_max` 回退 1728 并标「估算」；④ 新增 `stateTs`（轮询 2s ≠ 上报 5s，无它无法判新鲜度，且不得用包络 `ts` 冒充）；⑤ 过期/乱序 report 的丢弃在写入侧做一次，REST 只返回裁剪后的当前值；⑥ `viewing`/`casting`/`appVersion` 暂不进本响应（要加先改 `mqtt.md` §4.4）；⑦ 订正 §4「投屏与音乐的关系」兜底行：`/control/player/play`、`/control/player/resume` → **`/control/play`、`/control/resume`**（与 §5 路由表一致；REST 侧没有 `player/` 段，`player.*` 是 MQTT 术语）。**零 schema 变更**，`state.report` 形状不动，不新增错误码。
