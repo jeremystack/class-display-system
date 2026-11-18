@@ -703,6 +703,16 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   if(/[?&]reset=1/.test(location.search)) clearCode();
 
   // ── 控制台下行 ──
+  function doRevoke(reason){
+    // V2.1.23（CO-2026-11-18-04）：刷新控制码＝重置接管（reason=code_rotated）；全部解绑（reason=unbind）同走此路。
+    // 已绑会话失效 → 清码回输码态；article/cast 不得停留（没人能翻页）→ 先落回 standby
+    // V2.1.25：抽成函数，供「无 reason 的 codeChanged（旧页签）」走同一路径——两处实现分开写必然漂移
+    S.scene='standby'; S.article.cast=false; S.cast.active=false; S.music.playing=false; S.music.anchor=null;
+    LS.removeItem('cds.bound'); LS.removeItem('cds.credential'); LS.removeItem('cds.boundAt'); LS.removeItem('cds.displayBeat');
+    $('banner').textContent='控制码已失效，请重新输入'; $('banner').hidden=false;
+    $('content').hidden=true; $('entry').hidden=false; inputs.forEach(function(i){i.value='';});
+    sysOff(); setTimeout(function(){ inputs[0].focus(); }, 120);
+  }
   if(BC) BC.onmessage=function(ev){
     var d=ev.data||{};
     if(d.kind==='style'){ applyStyle(d.style); sys('样式已更新（不刷新页面）', false, 2200);
@@ -710,17 +720,14 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
       if(S.scene==='article') requestAnimationFrame(function(){ render(); });
       sendStyleApplied('');
       if(BC) BC.postMessage({kind:'ack', text:d.style ? '样式已应用' : ''}); return; }
-    if(d.kind==='revoke'){
-      // V2.1.23（CO-2026-11-18-04）：刷新控制码＝重置接管（reason=code_rotated）；全部解绑（reason=unbind）同走此路。
-      // 已绑会话失效 → 清码回输码态；article/cast 不得停留（没人能翻页）→ 先落回 standby
-      S.scene='standby'; S.article.cast=false; S.cast.active=false; S.music.playing=false; S.music.anchor=null;
-      LS.removeItem('cds.bound'); LS.removeItem('cds.credential'); LS.removeItem('cds.boundAt'); LS.removeItem('cds.displayBeat');
-      $('banner').textContent='控制码已失效，请重新输入'; $('banner').hidden=false;
-      $('content').hidden=true; $('entry').hidden=false; inputs.forEach(function(i){i.value='';});
-      sysOff(); setTimeout(function(){ inputs[0].focus(); }, 120); return; }
+    if(d.kind==='revoke'){ doRevoke(d.reason||'unbind'); return; }
     if(d.kind==='codeChanged'){
       if(d.reason==='code_issued'){ sys('已为下一台屏幕出码（本屏不受影响）', false, 2000); return; }   // V2.1.23：自动续码，不动已绑会话
-      sys('控制码已刷新（已连终端不受影响）', false, 2500); return;                                    // 旧控制台无 reason 时的兼容路径
+      // V2.1.25：无 reason 的 codeChanged＝旧控制台页签（V2.0.2–V2.1.22）按 ⟳ 刷新。
+      // 旧口径「已连终端不受影响」已作废（CO-2026-11-18-04）；fail-safe 按 revoke 处理——
+      // 否则本屏停在一张已被撤销的码上：新控制端控不了它、它也接不进新控制端＝孤儿屏。
+      // 旧页签自己的 toast 仍是旧文案，属版本偏斜期的允许偏差，刷新页面即自愈。
+      sys('检测到旧版控制台刷新了控制码：本屏已退出接管', true, 3000); doRevoke('legacy_no_reason'); return;
     }
     if(!LS.getItem('cds.bound')) return;
     if(d.kind==='standby'){ S.standby.mode=d.mode||'theme'; if(S.scene==='standby') render(); return; }
