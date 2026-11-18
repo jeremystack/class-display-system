@@ -184,7 +184,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   // 不再维护平行 ruler：getBoundingClientRect() 不含 margin，段距会整体丢失——
   // V2.1.5 在默认 72px 下就裁行（3 个两行节测得 756≤911 通过、实渲染 993.6 → overflow:hidden 静默裁掉最后一行）
   var A={ready:false, unit:'page', pageIndex:0, sectionIndex:0,
-         totalLines:1, viewLines:1, pageCount:1, sectionCount:0, verseLineIndex:[], lh:126};
+         totalLines:1, viewLines:1, pageCount:1, sectionCount:0, verseLineIndex:[], lineY:[], pageStarts:[0], lh:126};
 
   function artBody(){ return document.querySelector('#content .article .body'); }
 
@@ -196,15 +196,35 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     var H=body.clientHeight; if(H<40) return;
     var top=flow.getBoundingClientRect().top;
     var els=[].slice.call(flow.children);
-    A.verseLineIndex=els.map(function(el){ return Math.round((el.getBoundingClientRect().top-top)/lh); });
-    var last=els[els.length-1];
-    A.totalLines=last?Math.max(1,Math.round((last.getBoundingClientRect().bottom-top)/lh)):1;
+    // V2.1.7：每节的每一行按真实几何铺开，页起点只落在行起点上。
+    // 不再用 N=floor(H/lh) 当页容量——段距让真实容量更小，按 N 定位会把边界横切在一行中间。
+    A.lineY=[]; A.verseLineIndex=[];
+    els.forEach(function(el){
+      var r=el.getBoundingClientRect();
+      A.verseLineIndex.push(A.lineY.length);
+      var n=Math.max(1,Math.round(r.height/lh));
+      for(var i=0;i<n;i++) A.lineY.push(r.top-top+i*lh);
+    });
+    A.totalLines=A.lineY.length;
     A.lh=lh;
-    A.viewLines=Math.max(1,Math.floor(H/lh));
     A.sectionCount=A.verseLineIndex.length;
-    A.pageCount=Math.max(1,Math.ceil(A.totalLines/A.viewLines));
+    buildPageStarts(H);
     A.ready=true;
     applyView(silent);
+  }
+
+  function buildPageStarts(H){
+    A.pageStarts=[0]; A.viewLines=0;
+    while(true){
+      var s=A.pageStarts[A.pageStarts.length-1];
+      var lim=A.lineY[s]+H, j=s;
+      while(j+1<A.lineY.length && A.lineY[j+1]+A.lh<=lim+0.5) j++;
+      if(A.pageStarts.length===1) A.viewLines=j-s+1;
+      if(j+1>=A.lineY.length) break;
+      A.pageStarts.push(j+1);
+    }
+    A.pageCount=A.pageStarts.length;
+    if(!A.viewLines) A.viewLines=1;
   }
 
   function sectionOfLine(line){
@@ -213,24 +233,32 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     return k;
   }
 
+  function pageOfLine(line){
+    var p=0;
+    for(var i=0;i<A.pageStarts.length;i++){ if(A.pageStarts[i]<=line) p=i; }
+    return p;
+  }
+
   function applyView(silent){
     var body=artBody(); if(!body||!A.ready) return;
     var flow=body.querySelector('.flow'); if(!flow) return;
-    var N=A.viewLines, start;
+    var startLine;
     if(A.unit==='section'){
       A.sectionIndex=Math.max(0,Math.min(A.sectionCount-1,A.sectionIndex));
-      start=A.verseLineIndex[A.sectionIndex]||0;
+      startLine=A.verseLineIndex[A.sectionIndex]||0;
+      A.pageIndex=pageOfLine(startLine);      // pageCount 恒为整章屏数，与 unit 无关
     } else {
       A.pageIndex=Math.max(0,Math.min(A.pageCount-1,A.pageIndex));
-      start=A.pageIndex*N;
+      startLine=A.pageStarts[A.pageIndex];
+      A.sectionIndex=sectionOfLine(startLine);
     }
-    flow.style.transform='translateY(-'+(start*A.lh).toFixed(1)+'px)';
+    flow.style.transform='translateY(-'+(A.lineY[startLine]||0).toFixed(1)+'px)';
     var foot=document.querySelector('#content .article .foot');
     if(foot){
       if(A.unit==='page'){
-        var contTop=(start>0 && A.verseLineIndex.indexOf(start)<0);
-        var end=start+N, cut=(A.totalLines>end);
-        A.verseLineIndex.forEach(function(v){ if(v===end) cut=false; });
+        var nxt=A.pageStarts[A.pageIndex+1];
+        var contTop=(A.pageIndex>0 && A.verseLineIndex.indexOf(startLine)<0);
+        var cut=(nxt!=null && A.verseLineIndex.indexOf(nxt)<0);
         foot.textContent=(contTop?'（续上） ':'')+(cut?'（续）':'');
       } else {
         foot.textContent='节 '+(A.sectionIndex+1)+' / '+A.sectionCount;   // section 模式没有屏概念，也永不标「续」
@@ -256,17 +284,18 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
       var np=A.pageIndex+(dir==='prev'?-st:st);
       A.pageIndex=Math.max(0,Math.min(A.pageCount-1,np));
       if(np!==A.pageIndex) sys('已到章末', false, 1600);
-      A.sectionIndex=sectionOfLine(A.pageIndex*A.viewLines);
     }
+    var line=(A.unit==='section')?(A.verseLineIndex[A.sectionIndex]||0):A.pageStarts[A.pageIndex];
+    if(A.unit==='section') A.pageIndex=pageOfLine(line); else A.sectionIndex=sectionOfLine(line);
     applyView();
   }
 
   function setUnit(u){
-    var line=(A.unit==='section')?(A.verseLineIndex[A.sectionIndex]||0):(A.pageIndex*A.viewLines);
+    var startLine=(A.unit==='section')?(A.verseLineIndex[A.sectionIndex]||0):A.pageStarts[A.pageIndex];
     A.unit=(u==='section')?'section':'page';
-    if(A.unit==='section') A.sectionIndex=sectionOfLine(line);
-    else A.pageIndex=Math.max(0,Math.min(A.pageCount-1,Math.floor(line/A.viewLines)));
-    applyView();                      // 切 unit 不重发 pageMap：屏数按 unit 现算
+    if(A.unit==='section') A.sectionIndex=sectionOfLine(startLine);
+    else A.pageIndex=pageOfLine(startLine);
+    applyView();                      // 切 unit 不重发 pageMap：pageCount / sectionCount 恒报、不跳数
   }
 
   function fitOnePage(){
