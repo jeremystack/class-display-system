@@ -73,7 +73,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
 /* ── 当前内容 ── */
 .now{flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto}
 .now .stage{flex:1;display:flex;align-items:center;justify-content:center;min-height:0}
-.cover{width:170px;height:170px;border-radius:16px;background:linear-gradient(135deg,#2b3a5c,#4a2f57 60%,#1b2437);display:flex;align-items:center;justify-content:center;color:#cbd5e1;font-size:12px;letter-spacing:2px}
+/* V2.1.5：控制台也不再画封面（显示端已去掉，控制台留着会让人以为显示端还有） */
 .musictitle{text-align:center;margin-top:14px;font-size:18px}
 .musicsub{text-align:center;color:var(--muted);font-size:12px;margin-top:4px}
 .bar{display:flex;align-items:center;gap:10px;margin-top:14px;color:var(--muted);font:12px ui-monospace,monospace}
@@ -88,11 +88,19 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
 .article{max-width:760px;margin:0 auto;width:100%}
 .article .head{display:flex;align-items:baseline;gap:10px;color:var(--muted);font-size:12px;margin-bottom:10px}
 .article .head b{color:var(--text);font-size:15px}
-.verses{font-size:17px;line-height:1.9;color:#dde3ec}
+.verses{font-size:calc(17px * var(--console-font,1));line-height:1.9;color:#dde3ec}
 .verses p{margin:0 0 8px}
 .verses .sn{color:var(--muted);font-size:12px;margin-right:6px}
-.castbox{width:100%;max-width:720px;margin:0 auto}
-.castbox textarea{width:100%;min-height:180px;resize:vertical;font:16px/1.8 system-ui;background:#0b0d11;color:var(--text);border:1px solid var(--border);border-radius:12px;padding:14px}
+/* V2.1.5：板书满高——原来的 max-width:720px + min-height:180px 就是屏幕上下一大片空白的来源 */
+.castbox{width:100%;max-width:none;margin:0;flex:1;display:flex;flex-direction:column;min-height:0;height:100%}
+.stage-cast{align-items:stretch;min-height:0}
+.casthead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-bottom:8px}
+.casthead b{color:var(--text);font-size:15px}
+.casthead select{font-size:12px;padding:2px 6px;background:#0b0d11;color:var(--text);border:1px solid var(--border);border-radius:8px}
+/* 不再用 min-height:70vh：768px 高的笔记本上会把「投出」按钮挤出屏幕。改为占满剩余高度（约 80%） */
+.castbox textarea{width:100%;flex:1 1 auto;min-height:180px;resize:none;font:16px/1.8 system-ui;background:#0b0d11;color:var(--text);border:1px solid var(--border);border-radius:12px;padding:14px}
+.toast.undo{display:flex;gap:10px;align-items:center}
+.toast.undo button{min-height:24px;padding:0 8px;font-size:12px;background:#2a3a5c;border-color:#3d5280;color:#dbe6ff}
 .castbar{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
 .idle{text-align:center;color:var(--muted)}
 .idle b{display:block;color:var(--text);font-size:17px;margin-bottom:8px}
@@ -139,7 +147,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       <button role="tab" data-scene="article" aria-selected="false">文章</button>
       <button role="tab" data-scene="cast" aria-selected="false">板书</button>
     </div>
-    <span class="hint">四场景互斥 · 待机为默认 · 切换不刷新 · 切回状态保留 · 文章/板书期间不播放音乐（V2.1.2）</span>
+    <span class="hint">四场景互斥 · 待机为默认 · 切换不刷新 · 切回状态保留 · 文章/板书期间不播放音乐 · 字号按 px（V2.1.5）</span>
   </nav>
 
   <main class="main">
@@ -173,9 +181,16 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
           <option value="system-ui">系统默认</option>
         </select>
       </label>
-      <label class="field">字号 <span id="sFontVal">1.15</span>
-        <input type="range" id="sScale" min="0.8" max="2" step="0.05" value="1.15">
+      <label class="field">显示端字号 <span id="sFontVal">72 px</span>
+        <input type="range" id="sFontSize" min="24" max="120" step="4" value="72">
+        <span class="hintline" id="sFontEst">≈7 行 / 屏</span>
       </label>
+      <div class="field">控制页字号（仅本机）<span id="cfVal">100%</span>
+        <span style="display:inline-flex;gap:6px">
+          <button type="button" id="cfMinus" title="缩小控制页文字（不影响显示端）">−</button>
+          <button type="button" id="cfPlus" title="放大控制页文字（不影响显示端）">＋</button>
+        </span>
+      </div>
       <label class="field">行高 <span id="sLhVal">1.75</span>
         <input type="range" id="sLh" min="1.2" max="2.2" step="0.05" value="1.75">
       </label>
@@ -221,18 +236,92 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       { t:'诗篇 23 章', v:'诗篇', ch:23 },
       { t:'约伯记 3 章', v:'约伯记', ch:3 }
     ]},
-    cast: { text:'', active:false },
-    style: { fontFamily:{ui:'system-ui',body:'song'}, fontScale:1.15, lineHeight:1.75, fg:'#dde3ec', bg:'#000000', align:'left' }
+    cast: { text:'', draft:'', active:false, lines:5, castId:'' },   // text=已上屏内容，draft=编辑中草稿（V2.1.5 分离）
+    style: { fontFamily:{ui:'system-ui',body:'song'}, fontSizePx:72, lineHeight:1.75, fg:'#dde3ec', bg:'#000000', align:'left' }
   };
   try{
     var saved = JSON.parse(LS.getItem('cds.consoleState')||'null');
     if(saved){ S.music.items = saved.music; S.article.items = saved.article; }
     var st = JSON.parse(LS.getItem('cds.style')||'null'); if(st) S.style = st;
+    S.cast.draft = LS.getItem('cds.castDraft') || '';
+    var cl = LS.getItem('cds.castLines'); if(cl) S.cast.lines = (cl==='all' ? 'all' : +cl);
+    var cc = LS.getItem('cds.castId'); if(cc) S.cast.castId = cc;
     var co = JSON.parse(LS.getItem('cds.codeObj')||'null');
     if(co) S.codeObj = co;
     else { var c0 = LS.getItem('cds.consoleCode'); if(c0) S.codeObj = { code:c0, exp: Date.now()+15*60*1000, used:false }; }
   }catch(e){}
   function saveLists(){ LS.setItem('cds.consoleState', JSON.stringify({music:S.music.items, article:S.article.items})); }
+
+  // V2.1.5：控制页字号（仅本机）——与 display.style.fontSizePx 完全独立，不进下发 payload
+  S.cf = Math.max(0.6, Math.min(2, +(LS.getItem('consoleFontScale')||1)));
+  function applyCF(){
+    document.documentElement.style.setProperty('--console-font', S.cf);
+    var el=$('cfVal'); if(el) el.textContent=Math.round(S.cf*100)+'%';
+  }
+  function bumpCF(d){
+    S.cf = Math.max(0.6, Math.min(2, Math.round((S.cf+d)*100)/100));
+    LS.setItem('consoleFontScale', S.cf);
+    applyCF();
+  }
+
+  // ── V2.1.5 板书：双击发送「光标所在行及上方 N 行」 ──
+  function castRange(text, caret, n){
+    var lines=text.split('\n'), upto=0, li=0;
+    for(; li<lines.length; li++){ upto += lines[li].length+1; if(caret<upto) break; }
+    if(li>=lines.length) li=lines.length-1;
+    var start = (n==='all') ? 0 : Math.max(0, li-n+1);
+    var seg = lines.slice(start, li+1);
+    while(seg.length && !seg[seg.length-1].trim()) seg.pop();   // 尾部空行 trim
+    return { start:start, text:seg.join('\n') };
+  }
+  function toastUndo(msg, fn){
+    var box=$('toasts');
+    var d=document.createElement('div'); d.className='toast undo';
+    var sp=document.createElement('span'); sp.textContent=msg; d.appendChild(sp);
+    var b=document.createElement('button'); b.textContent='撤销';
+    b.onclick=function(){ d.remove(); fn(); };
+    d.appendChild(b); box.appendChild(d);
+    while(box.children.length>3) box.firstChild.remove();
+    setTimeout(function(){ if(d.parentNode) d.remove(); }, 3000);   // 3 秒撤销窗口
+  }
+  function sendCast(){
+    var ta=$('castText'); if(!ta) return;
+    S.cast.draft = ta.value;                       // 草稿保留，发送只取行范围
+    var r=castRange(ta.value, ta.selectionStart, S.cast.lines||5);
+    if(!r.text.trim()){ toast('光标这一行是空的，没有内容可发送', true); return; }
+    if(S.music.playing){                       // 编排 pause-first（V2.1.2 不变量：看内容不得有声）
+      S.music.playing=false;
+      send({kind:'music', playing:false, pos:S.music.pos, idx:S.music.idx});
+      renderNP();
+    }
+    var prev=S.cast.text, prevActive=S.cast.active;
+    if(!S.cast.castId){ S.cast.castId='c'+Date.now().toString(36); LS.setItem('cds.castId', S.cast.castId); }
+    S.cast.text=r.text; S.cast.active=true; S.scene='cast';
+    send({kind:'cast', active:true, text:r.text, castId:S.cast.castId, scene:'cast'});
+    render();
+    var n=r.text.split('\n').length;
+    toastUndo('已发送第 '+(r.start+1)+'–'+(r.start+n)+' 行', function(){
+      S.cast.text=prev; S.cast.active=prevActive; if(!prevActive) S.scene='standby';
+      send({kind:'cast', active:prevActive, text:prev, castId:S.cast.castId, scene:(prevActive?'cast':'standby')});
+      render(); toast('已撤销发送');
+    });
+  }
+  function bindCast(){
+    var ta=$('castText');
+    if(ta){
+      ta.addEventListener('dblclick', function(e){
+        e.preventDefault();
+        // preventDefault 不会阻止双击选词，额外把选区收成光标，避免发送瞬间整词高亮
+        try{ this.selectionStart=this.selectionEnd=this.selectionStart; }catch(err){}
+        sendCast();
+      });
+    }
+    var sel=$('castLines');
+    if(sel){ sel.addEventListener('change', function(){
+      S.cast.lines = (this.value==='all') ? 'all' : +this.value;
+      LS.setItem('cds.castLines', String(S.cast.lines));
+    }); }
+  }
 
   function send(msg){ if(BC) BC.postMessage(msg); }
   var CODE_TTL = 15*60*1000;
@@ -372,7 +461,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     } else if(S.scene === 'music'){
       var it = S.music.items[S.music.idx] || { t:'（清单为空）', m:'--:--', dur:245000 };
       html = '<div class="stage"><div style="width:100%">'+
-        '<div style="display:flex;justify-content:center"><div class="cover">COVER</div></div>'+
+
         '<div class="musictitle">'+esc(it.t)+'</div>'+
         '<div class="musicsub">主音轨 · 预选第 '+(S.music.idx+1)+' / '+S.music.items.length+' 首</div>'+
         '<div class="bar"><span id="posLabel">'+fmt(S.music.pos)+'</span><div class="track" id="track"><div class="fill" id="fill"></div><div class="knob" id="knob"></div></div><span>'+it.m+'</span></div>'+
@@ -391,7 +480,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       var a = S.article.items[S.article.idx] || {v:'诗篇',ch:23,t:'诗篇 23 章'};
       var vs = VERSES[a.ch] || VERSES[23];
       var start = S.article.page * 3, slice = vs.slice(start, start+3);
-      html = '<div class="stage"><div class="article" style="font-size:'+(17*S.style.fontScale).toFixed(1)+'px;line-height:'+S.style.lineHeight+';text-align:'+S.style.align+'">'+
+      html = '<div class="stage"><div class="article" style="font-size:'+(17*S.cf).toFixed(1)+'px;line-height:'+S.style.lineHeight+';text-align:'+S.style.align+'">'+
         '<div class="head"><b>'+esc(a.t)+'</b><span>预选第 '+(S.article.idx+1)+' 条</span>'+
           '<span style="margin-left:auto">第 '+(S.article.page+1)+' 屏'+(S.article.cast?'':' · 学生看不到（未上屏）')+'</span></div>'+
         '<div class="verses">'+ slice.map(function(v){ return '<p><span class="sn">'+v[0]+'</span>'+esc(v[1])+'</p>'; }).join('') +'</div>'+
@@ -402,15 +491,22 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
         '</div>'+
       '</div></div>';
     } else {
-      html = '<div class="stage"><div class="castbox">'+
-        '<div class="head" style="display:flex;gap:10px;color:var(--muted);font-size:12px;margin-bottom:10px"><b style="color:var(--text);font-size:15px">板书</b><span>独占全屏 · 不再有"半屏 + 窄栏"</span></div>'+
-        '<textarea id="castText" placeholder="在这里写板书正文，或选择图片 / PDF…">'+esc(S.cast.text)+'</textarea>'+
+      html = '<div class="stage stage-cast"><div class="castbox">'+
+        '<div class="casthead"><b>板书</b><span>独占全屏 · 满高编辑区</span>'+
+          '<label style="margin-left:auto">发送行数 <select id="castLines">'+
+            [['3','3 行'],['5','5 行'],['8','8 行'],['10','10 行'],['all','全部']].map(function(o){
+              return '<option value="'+o[0]+'"'+(String(S.cast.lines)===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+
+          '</select></label></div>'+
+        '<textarea id="castText" placeholder="在这里写板书正文，或选择图片 / PDF…">'+esc(S.cast.draft)+'</textarea>'+
         '<div class="castbar">'+
+          '<span style="margin-right:auto;color:var(--muted);font-size:12px">双击文本框 ＝ 发送<b>光标所在行及上方 N 行</b>；发送后 3 秒内可撤销</span>'+
           '<button class="ghost" id="castPick">选择图片 / PDF</button>'+
-          '<button class="'+(S.cast.active?'':'primary')+'" id="castToggle">'+(S.cast.active?'结束板书':'投出到教室屏幕')+'</button>'+
+          (S.cast.active?'<button class="ghost" id="castToggle">结束板书</button>':'')+
+          '<button class="primary" id="castSend">'+(S.cast.active?'重发（原地替换）':'投出到教室屏幕')+'</button>'+
         '</div></div></div>';
     }
     n.innerHTML = html;
+    bindCast();
     renderProgress();
   }
 
@@ -456,9 +552,13 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     }
     // 点条目即用
     if(kind==='music'){
-      S.music.idx=i; S.music.pos=0; S.music.playing=true; S.scene='music';
-      send({kind:'scene',scene:'music'}); send({kind:'play', idx:i, pos:0});
-      toast('已从「'+arr[i].t+'」开始播放');
+      // V2.1.5：点预选条目＝装载并落 paused（positionMs=0、曲目保留），点「播放」才出声。
+      // 例外：正在播放时点「下一首」＝续播（否则连点两下会莫名静音）。
+      var wasPlaying = S.music.playing;
+      S.music.idx=i; S.music.pos=0; S.music.playing=wasPlaying; S.scene='music';
+      send({kind:'scene',scene:'music'});
+      send({kind:'music', playing:wasPlaying, pos:0, idx:i});
+      toast(wasPlaying ? '已切到「'+arr[i].t+'」并续播' : '已装载「'+arr[i].t+'」· 点「播放」才出声');
     } else {
       S.article.idx=i; S.article.page=0; S.article.cast=false; S.scene='article';
       toast('已在预览：「'+arr[i].t+'」 · 点「开始投屏」才上屏');
@@ -513,13 +613,12 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       render(); return;
     }
     if(e.target.id==='castToggle'){
-      S.cast.text = (document.getElementById('castText')||{}).value || S.cast.text;
-      S.cast.active = !S.cast.active;
-      send({kind:'cast', active:S.cast.active, text:S.cast.text, scene:(S.cast.active?'cast':'standby')});
-      toast(S.cast.active?'板书已投出':'已结束板书（屏幕回待机）');
-      if(!S.cast.active) S.scene='standby';
+      S.cast.active = false; S.scene='standby';
+      send({kind:'cast', active:false, text:S.cast.text, castId:S.cast.castId, scene:'standby'});
+      toast('已结束板书（屏幕回待机）');
       render(); return;
     }
+    if(e.target.id==='castSend'){ sendCast(); return; }
     if(e.target.id==='castPick') toast('图片 / PDF 上传走 R2 预签名（原型不实现）');
   });
 
@@ -537,7 +636,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
 
   var inputTimer;
   $('now').addEventListener('input', function(e){
-    if(e.target.id==='castText'){ S.cast.text=e.target.value; clearTimeout(inputTimer); inputTimer=setTimeout(function(){ send({kind:'cast',active:S.cast.active,text:S.cast.text}); },400); }
+    if(e.target.id==='castText'){ S.cast.draft=e.target.value; clearTimeout(inputTimer); inputTimer=setTimeout(function(){ LS.setItem('cds.castDraft', S.cast.draft); },400); }   // V2.1.5：打字只存草稿，上屏只在「双击/发送」
     if(e.target.id==='vol'){ send({kind:'volume', value:+e.target.value}); }
   });
 
@@ -583,17 +682,21 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
   // ── 样式下发 ──
   var map = { song:'"Songti SC","Noto Serif SC",serif', hei:'"PingFang SC","Microsoft YaHei",sans-serif', kai:'"Kaiti SC",KaiTi,serif', 'system-ui':'system-ui,sans-serif' };
   function readStyle(){
+    var fpx = Math.max(24, Math.min(120, +$('sFontSize').value || 72));
     S.style = {
       fontFamily:{ ui:'system-ui', body:$('sFont').value },
-      fontScale:+$('sScale').value, lineHeight:+$('sLh').value,
+      fontSizePx: fpx, lineHeight:+$('sLh').value,
       fg:$('sFg').value, bg:$('sBg').value, align:$('sAlign').value
     };
-    $('sFontVal').textContent = S.style.fontScale.toFixed(2);
+    $('sFontVal').textContent = fpx + ' px';
     $('sLhVal').textContent = S.style.lineHeight.toFixed(2);
-    var sm=$('styleSummary'); if(sm) sm.textContent=($('sFont').selectedOptions[0]||{}).textContent+' · '+S.style.fontScale.toFixed(2)+' · 行高 '+S.style.lineHeight.toFixed(2);
+    // 可用高 972px（1080 − 上下 5vh×2）；给老师一个「一屏几行」的数，代替做不到的像素级所见即所得
+    var est = Math.max(1, Math.floor(972/(fpx*S.style.lineHeight)));
+    var e=$('sFontEst'); if(e) e.textContent='≈'+est+' 行 / 屏';
+    var sm=$('styleSummary'); if(sm) sm.textContent=($('sFont').selectedOptions[0]||{}).textContent+' · '+fpx+'px · 行高 '+S.style.lineHeight.toFixed(2);
     return S.style;
   }
-  ['sFont','sScale','sLh','sAlign','sFg','sBg'].forEach(function(id){
+  ['sFont','sFontSize','sLh','sAlign','sFg','sBg'].forEach(function(id){
     $(id).addEventListener('input', function(){ readStyle(); $('styleState').textContent='未下发（有改动）'; });
   });
   $('pushStyle').addEventListener('click', function(){
@@ -622,7 +725,12 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
   // ── 初始化 ──
   renderCode();
   $('sFont').value = (S.style.fontFamily && S.style.fontFamily.body) || 'song';
-  $('sScale').value = S.style.fontScale; $('sLh').value = S.style.lineHeight;
+  // V2.1.5 存量迁移：旧 fontScale 量程（0.8–2.0 → 14–36px）在大屏上全部不可用，一律重置为 72px
+  var fpx0 = S.style.fontSizePx || 72;
+  $('sFontSize').value = Math.max(24, Math.min(120, fpx0)); $('sLh').value = S.style.lineHeight;
+  applyCF();
+  $('cfMinus').addEventListener('click', function(){ bumpCF(-0.1); });
+  $('cfPlus').addEventListener('click', function(){ bumpCF(0.1); });
   $('sFg').value = S.style.fg === '#dde3ec' ? '#dddddd' : S.style.fg; $('sBg').value = S.style.bg;
   $('sAlign').value = S.style.align || 'left';
   readStyle();
