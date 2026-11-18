@@ -9,7 +9,7 @@
   --cds-bg:#000; --cds-fg:#e8ecf2; --cds-fg-muted:#a9b3c2; --cds-accent:#8ab4f8;
   --cds-font-ui:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
   --cds-font-body:"Songti SC","Noto Serif SC",serif;
-  --cds-font-scale:1.15; --cds-line-height:1.75; --cds-align:left;
+  --cds-font-scale:1.15; --cds-font-size:72px; --cds-line-height:1.75; --cds-align:left;
 }
 *{box-sizing:border-box}
 html{font-size:18px}
@@ -45,13 +45,15 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
 /* ── 内容态 ── */
 #content{padding:5vh 5vw}
 .music{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
-.music .cover{width:min(30vh,240px);height:min(30vh,240px);border-radius:18px;
-  background:linear-gradient(135deg,#2b3a5c,#4a2f57 60%,#1b2437);margin-bottom:3vh;opacity:.9}
+/* V2.1.5：去掉音轨封面。Jeremyzh：显示端只留顶部歌名 + 歌词；音轨徽标属功能，留在控制台。 */
 .music .t{font-size:1.5rem;font-weight:600;letter-spacing:.04em}
 .music .sub{color:var(--cds-fg-muted);font-size:.8rem;margin-top:.5rem}
-.lyrics{margin-top:4vh;height:21vh;overflow:hidden;position:relative;width:100%}
-.lyric{font-size:1.05rem;line-height:2.1;color:rgba(255,255,255,.32);transition:color .25s,transform .25s}
-.lyric.cur{color:var(--cds-accent);transform:scale(1.06)}
+/* V2.1.5：歌词跟同一字号变量（--cds-font-size）走；字号可到 120px，当前行必须居中滚动，
+   否则「当前句」会滚出 21vh 的可视区——那等于改了字号看不见歌词 */
+.lyrics{margin-top:3vh;flex:1;min-height:0;overflow:hidden;width:100%;
+  display:flex;flex-direction:column;justify-content:center;align-items:center}
+.lyric{font-size:calc(var(--cds-font-size) * .78);line-height:1.5;color:rgba(255,255,255,.3);padding:.05em 0}
+.lyric.cur{color:var(--cds-accent)}
 .progress{position:absolute;left:5vw;right:5vw;bottom:4vh;height:4px;background:rgba(255,255,255,.14);border-radius:99px}
 .progress i{display:block;height:100%;background:var(--cds-accent);border-radius:99px;transition:width .25s linear}
 
@@ -60,12 +62,14 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
 .article .head{color:var(--cds-fg-muted);font-size:.8rem;letter-spacing:.06em;margin-bottom:2.5vh}
 .article .head b{color:var(--cds-fg);font-size:1rem;margin-right:.8rem}
 .body{flex:1;overflow:hidden;font-family:var(--cds-font-body);
-  font-size:calc(1rem * var(--cds-font-scale));line-height:var(--cds-line-height);text-align:var(--cds-align)}
+  font-size:var(--cds-font-size);line-height:var(--cds-line-height);text-align:var(--cds-align)}
 .body p{margin:0 0 1.1em;transition:font-size .2s ease,color .2s ease}
 .body .sn{color:var(--cds-fg-muted);font-size:.6em;vertical-align:.25em;margin-right:.5em;font-family:var(--cds-font-ui)}
 
 .cast{height:100%;display:flex;align-items:center;justify-content:center}
-.cast .paper{max-width:74vw;font-family:var(--cds-font-body);font-size:calc(1.35rem * var(--cds-font-scale));
+/* V2.1.5：板书独立 clamp——板书行数不可控，字号拉到 120px 会溢出（1.35rem×scale 是原来的坑） */
+.cast .paper{max-width:74vw;max-height:100%;overflow:hidden;font-family:var(--cds-font-body);
+  font-size:min(calc(var(--cds-font-size) * .9), 6.5vh);
   line-height:var(--cds-line-height);text-align:var(--cds-align);white-space:pre-wrap}
 
 .idle{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--cds-fg-muted)}
@@ -141,6 +145,9 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
       var map={song:'"Songti SC","Noto Serif SC",serif',hei:'"PingFang SC","Microsoft YaHei",sans-serif',kai:'"Kaiti SC",KaiTi,serif','system-ui':'system-ui,sans-serif'};
       r.setProperty('--cds-font-body', map[st.fontFamily.body]||st.fontStack||'system-ui,sans-serif');
     }
+    // V2.1.5：字号以 px 为准（24–120）。旧字段 fontScale 只作兼容：×18 折算 px。
+    var fpx = st.fontSizePx ? +st.fontSizePx : (st.fontScale ? Math.round(st.fontScale * 18) : null);
+    if(fpx) r.setProperty('--cds-font-size', Math.max(24, Math.min(120, fpx)) + 'px');
     if(st.fontScale) r.setProperty('--cds-font-scale', st.fontScale);
     if(st.lineHeight) r.setProperty('--cds-line-height', st.lineHeight);
     if(st.fg){ r.setProperty('--cds-fg', st.fg); }
@@ -157,7 +164,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   var S = { scene:'standby', standby:{ mode:'theme' }, music:{ idx:0, playing:false, pos:0, anchor:null, items:[
       { t:'我心灵得安宁', m:'4:05', dur:245000 },{ t:'奇异恩典', m:'3:42', dur:222000 },{ t:'靠近主', m:'5:10', dur:310000 }]},
     article:{ idx:0, page:0, pageCount:0, cast:false, items:[{t:'诗篇 23 章',v:'诗篇',ch:23},{t:'约伯记 3 章',v:'约伯记',ch:3}]},
-    cast:{ active:false, text:'' }
+    cast:{ active:false, text:'', castId:'' }
   };
   try{
     var saved=JSON.parse(LS.getItem('cds.consoleState')||'null');
@@ -212,14 +219,22 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   function render(){
     if(!LS.getItem('cds.bound')) return;
     var c=$('content'), html='';
+    // V2.1.5：同一 castId 的重发＝原地替换文本，不重建 DOM（学生看不到闪屏）
+    if(S.scene==='cast' && S.cast.castId){
+      var ex=document.querySelector('#content .cast .paper');
+      if(ex && ex.getAttribute('data-cast-id')===String(S.cast.castId)){
+        ex.textContent=S.cast.text||'（板书内容）'; requestAnimationFrame(fitCast); return;
+      }
+    }
     if(S.scene==='music'){
       var it=S.music.items[S.music.idx]||{t:'',m:'--:--',dur:245000};
       var cur=Math.min(LYRICS.length-1, Math.floor((S.music.pos/it.dur)*LYRICS.length));
       html='<div class="music">'+
-        '<div class="cover"></div>'+
         '<div class="t">'+esc(it.t)+'</div>'+
         '<div class="sub">'+(S.music.playing?'正在播放':'已暂停')+' · 第 '+(S.music.idx+1)+' 首</div>'+
-        '<div class="lyrics" id="lrc">'+LYRICS.map(function(l,i){return '<div class="lyric'+(i===cur?' cur':'')+'">'+esc(l)+'</div>';}).join('')+'</div>'+
+        '<div class="lyrics" id="lrc">'+LYRICS.slice(Math.max(0,cur-1), cur+2).map(function(l,k){
+            var i=Math.max(0,cur-1)+k;
+            return '<div class="lyric'+(i===cur?' cur':'')+'">'+esc(l)+'</div>'; }).join('')+'</div>'+
         '</div>'+
         '<div class="progress"><i id="pbar" style="width:'+Math.min(100,(S.music.pos/it.dur)*100).toFixed(1)+'%"></i></div>';
     } else if(S.scene==='article'){
@@ -229,7 +244,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
         '<div class="body">'+(pg.verses||[]).map(function(v){return '<p><span class="sn">'+v[0]+'</span>'+esc(v[1])+'</p>';}).join('')+'</div>'+
         '<div class="foot">'+(pg.cont?'（续）':'')+'</div></div>';
     } else if(S.scene==='cast'){
-      html='<div class="cast"><div class="paper">'+esc(S.cast.text||'（板书内容）')+'</div></div>';
+      html='<div class="cast"><div class="paper" data-cast-id="'+(S.cast.castId||'')+'">'+esc(S.cast.text||'（板书内容）')+'</div></div>';
     } else if(S.scene==='standby'){
       if(S.standby.mode==='blank'){
         html='<div style="position:fixed;inset:0;background:#000"></div>';   // 纯黑：不让学生看到下一条内容
@@ -243,6 +258,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
       html='';
     }
     c.innerHTML=html;
+    requestAnimationFrame(fitCast);   // 等布局/字体生效后再量板书是否装得下
     $('content').hidden=false; $('entry').hidden=true;
     if(DEBUG) $('dbg').className='show';
     if(S.scene==='article' && !measuring){
@@ -251,6 +267,18 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
         pagesDirty=false; measurePages(); measuring=false;
         if(pagesDirty){ pagesDirty=false; render(); }
       });
+    }
+  }
+
+  // V2.1.5：板书自动收缩——字号给足，装不下就逐档缩，直到整段装进一屏（大屏无人操作：不能滚动，也不能默默裁掉）
+  function fitCast(){
+    var wrap=document.querySelector('#content .cast'); if(!wrap) return;
+    var p=wrap.querySelector('.paper'); if(!p) return;
+    p.style.fontSize='';
+    var base=parseFloat(getComputedStyle(p).fontSize)||48, cur=base, guard=0;
+    while(p.scrollHeight > p.clientHeight+1 && p.clientHeight>0 && guard++<14){
+      cur=Math.max(base*0.4, cur*0.92); p.style.fontSize=cur+'px';
+      if(cur<=base*0.4+0.01) break;
     }
   }
 
@@ -264,8 +292,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     if(S.music.pos>=it.dur){ S.music.pos=0; }
     var bar=$('pbar'); if(bar) bar.style.width=Math.min(100,(S.music.pos/it.dur)*100).toFixed(1)+'%';
     var cur=Math.min(LYRICS.length-1, Math.floor((S.music.pos/it.dur)*LYRICS.length));
-    var nodes=document.querySelectorAll('.lyric');
-    nodes.forEach(function(n,i){ n.className='lyric'+(i===cur?' cur':''); });
+    if(cur!==S.music.lastCur){ S.music.lastCur=cur; render(); }   // 只渲染当前行 ±1，换句才重绘
     if(DEBUG) $('dbg').textContent='scene='+S.scene+' pos='+fmt(S.music.pos)+' styleV='+((JSON.parse(LS.getItem('cds.style')||'{}').styleVersion)||'-');
   },250);
 
@@ -395,7 +422,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
       S.scene='article'; render(); return;
     }
     if(d.kind==='cast'){
-      S.cast.text=d.text||''; S.cast.active=!!d.active;
+      S.cast.text=d.text||''; S.cast.active=!!d.active; if(d.castId) S.cast.castId=d.castId;
       S.scene = d.scene || (d.active?'cast':'standby'); render(); return;
     }
     if(d.kind==='volume'){ /* 原型不发声 */ return; }
