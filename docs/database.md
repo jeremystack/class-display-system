@@ -1,8 +1,8 @@
 # Class Display System 数据库设计文档
 
 ## 📋 文档信息
-- **版本**: V2.2.3
-- **更新日期**: 2026-11-18 22:06
+- **版本**: V2.2.4
+- **更新日期**: 2026-11-18 22:20
 - **数据库**: Cloudflare D1 (SQLite)
 
 ---
@@ -42,7 +42,7 @@ CREATE TABLE devices (
 - `device_code` 用于快速连接和验证
 
 > **V2.2.1 口径变更（CO-2026-11-18-05，一用户一控制端／控制码长期有效）：`devices.user_id` 与 `devices.bound_at` 自本版起停止写入、不再读取。**
-> 绑定状态唯一来源改为 `device_bindings(device_id, user_id, bound_at, revoked_at, updated_at)`（见 `migrations/0005_control_codes_and_styles.sql`，rev2 定稿；**DDL 不在本仓库**，由运维维护，sha256 与 promote 状态以 `migrations/README-0005.md` 台账为准）；`devices.device_code` 降为历史列（新流程写哨兵值，**不得**用作授权维度——`'x'||device_id` 恒定可猜），控制码改由 `control_codes(owner_id, owner_kind, code, rotated_at, created_at, expires_at)` 承载（**一个 owner 一张**：登录用户 `owner_kind='user'`、`expires_at` 恒 NULL 即长期有效；未登录控制端 `owner_kind='guest'`、`owner_id='g_'+16hex`、由 `expires_at` 控制「还能不能再加新屏」，见 **V2.2.3**）。
+> 绑定状态唯一来源改为 `device_bindings(device_id, user_id, bound_at, revoked_at, updated_at)`（见 `migrations/0005_control_codes_and_styles.sql`，rev2 定稿；**DDL 不在本仓库**，由运维维护，sha256 与 promote 状态以 `migrations/README-0005.md` 台账为准）；`devices.device_code` 降为历史列（新流程写哨兵值，**不得**用作授权维度——`'x'||device_id` 恒定可猜），控制码改由 `control_codes(user_id, code, rotated_at)` 承载（一用户一张、8 位数字、**长期有效、无过期**）。> **V2.2.4**：曾短暂规划的 rev3（`owner_id`/`owner_kind`/`expires_at` 的 guest 归属键）已作废——控制端必须登录，屏端不登录这件事由 `POST /devices/register`（本来无鉴权）承载，数据库零变更。
 > **为什么必须写在这里而不是只写在迁移注释里**：两处同时写＝同一事实两处定义，踢出时漏改一处，控制台与 REST 会各显示一个答案。`devices.user_id` / `bound_at` 两列留到 T-01 维护窗口的 12-step 重建时一并删除。
 
 ---
@@ -259,7 +259,8 @@ books ──> verses (book_id + chapter_sn，章为派生维度)
 
 ## 变更记录
 
-- **V2.2.3 (2026-11-18)**：**`control_codes` 形状改为「一个 owner 一张」（rev3；0005 未 apply，不开 0006）**。起因：Jeremyzh 22:05 定「控制端不登录也能拿码、由屏输码」，guest 没有 `users.username` ⇒ rev2 的 `user_id PRIMARY KEY` 入不了表。① 主键 `user_id` → **`owner_id`**（它同时是归属键，必须与 `device_bindings.user_id`、`device_bind_events.user_id`、MQTT 主题段 `u/{ownerId}/…` 逐字相同）；② 新增 `owner_kind`（`'user'|'guest'`，不写 CHECK：枚举只活在注释里是既有取舍）、`expires_at`（**仅 guest 非空**；CHECK 表达不了条件非空，由应用层保证）；③ 新增索引 `ix_control_codes_kind(owner_kind, expires_at)`（清理与对账用），`ux_control_codes_code` 保留；④ **归属键 ≠ 凭证**：`g_…` 是可公开的标识，凭证是另发的签名 JWT、**不落库**——把凭证当归属键写进只追加永不清理的 `device_bind_events.user_id`，与「码不得存进审计表」是同一条禁令，只换了列名；⑤ 用户名**不得**以 `g_` 开头，否则两套命名空间重叠＝guest 可冒充用户；⑥ **无 ALTER、无新表、无 0006**：`device_bind_events.user_id` 本就是 `TEXT NOT NULL` 且 D1 无外键，guest 行可直接落；⑦ 过期语义（只禁新绑定、不踢已绑）定在 `api.md` §4.8.3，本文件不重复定义，只记**为什么 `expires_at` 在码表而不在绑定表**——绑定表两态已答「这屏归谁」，有效期答的是「还能不能再加屏」；合成一列会让「码过期」自动等于「屏被踢」，而那是用户可见的破坏。
+- **V2.2.4 (2026-11-18)**：**V2.2.3 的 rev3（guest 归属键）整体作废；`control_codes` 回到 rev2 的 4 列**（Jeremyzh 22:10 裁决「控制端一定需要登录」；零 schema 变更，0005 仍按 rev2 promote）。① `control_codes` 形状恢复为 `(user_id, code, rotated_at, created_at)`：一用户一张、8 位数字、**长期有效、无 `expires_at`**；② `owner_kind` / `ix_control_codes_kind` / `g_`+16hex 归属键 / guest 凭证均不存在，`device_bindings.user_id` 与 `device_bind_events.user_id` 仍只装 `users.username`；③ rev3 档案在 `docs/changes/superseded/0005_control_codes_and_styles.rev3-guest归属键.SUPERSEDED`（**不得**放回 `migrations/`）；④ 码失效的唯一途径是控制端 `rotate`（旧码从库里消失），其运行时后果（已绑屏判 `revoked`/`code_rotated`）见 `api.md` §4.6 / V2.2.15。
+- **V2.2.3 (2026-11-18)**：~~`control_codes` 形状改为「一个 owner 一张」（rev3）~~ —— **本版已于 V2.2.4 整体作废**，保留此行仅为版本可回溯（按 R-02：不删历史陈述，只标注失效）。
 - **V2.2.2 (2026-11-18)**：**0005 指针改为「文件名＋运维台账」，并记明 DDL 不在本仓库**（零 schema 变更）。起因：`migrations/` 里原有那份 `0005_control_codes_and_styles.sql` 是 **CO-05 之前的旧模型**（`control_codes.code` 主键、`expires_at` 15min、`used_at` 一次性消费、**无** `device_bindings`），运维已将其移出应用路径（`docs/changes/superseded/0005_control_codes_and_styles.pre-co05.SUPERSEDED`，11,174 B），而本文档仍指向 `migrations/0005` rev2 草案 ⇒ 维护窗口照指针执行会落到废止模型（`GET /devices/me` 的三态与 `POST /devices/me/release` 将无表可依，`revoked_at` 在 `device_bindings` 里）。① 指针改为 `migrations/0005_control_codes_and_styles.sql`（rev2 定稿，逐字节复制、不改内容）；② 明确**本仓库不含 `migrations/` 目录**——DDL 由运维维护，sha256 与 apply 前后断言以 `migrations/README-0005.md` 为准；③ 同源修正 `api.md` V2.2.12、`mqtt.md` V2.2.31。**未动**：任何表结构、列、索引。④ 另记一条实现前提（运维 21:5x 提出、我确认）：rev2 **不含 `device_bindings` backfill**，故 apply 必须在**首次装机配对之前**——当前两库 `devices` 均 0 行，本次无需 backfill；一旦先做过配对，须先补 `INSERT OR IGNORE INTO device_bindings(device_id,user_id,bound_at,updated_at) SELECT device_id,user_id,bound_at,unixepoch() FROM devices WHERE user_id IS NOT NULL`，否则既有屏全部落成「从未绑定」。
 - **V2.2 (2026-11-17)**：落地裁决 D-01（章为派生维度不建表、唯一性落在经节粒度、章列表接口分页），补本轮编辑说明；版本与 `api.md` / `mqtt.md` 对齐。
 - **V2.1 (2026-11-17)**：按生产库 `wenzhang_volumes` / `wenzhang_verses` 校正结构，删除自建 `chapters` 表；文章流程改为阅读导航（人工阅读，无播放控制）。

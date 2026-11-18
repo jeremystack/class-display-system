@@ -2,7 +2,7 @@
 
 ## 📋 文档信息
 
-- **版本**: V2.2.14（V2.2 基线 + V2.2.2 §4.5 响应体 / 兜底路由订正 + V2.2.3 字段语义定稿 + V2.2.4 §4.4 `online` 口径对齐 + V2.2.5 设备与控制码接口按 CO-2026-11-18-05 改判 + **V2.2.6 变更记录勘误（行号／闭合项）** + **V2.2.7 跨文档引用改引节名（行号三次漂移）／`4092` HTTP 400 经产品确认** + **V2.2.8 设备凭据不随绑定撤销（身份≠授权）／`/devices/list` 返回集合定死** + **V2.2.9 三处「产品侧待改」加闭合注（C1 过期文案／`binding.revoked` 交叉引用）** + **V2.2.10 新增设备端自解绑 `POST /devices/me/release`（关掉屏砖化 P1；本版起接口数 +1）** + **V2.2.11 `GET /devices/me` 三态与快照两态的分工写死（判「未绑定」的唯一载体是 REST；`unbound` 不得并入 `reason`）** + **V2.2.12 DDL 指针改为「文件名＋运维台账」（`migrations/0005` 指向废止件、且本仓库无 `migrations/`）** + **V2.2.13 屏端自解绑入口定案（长按右下角 3 秒＋二次确认，`released:false` 不是失败）** + **V2.2.14 未登录控制端（guest）：归属键与凭证分离／`POST /control-code/guest`（接口数 +1）／guest 码过期只禁新绑定、不踢已绑**，见 §10 变更记录）
+- **版本**: V2.2.15（V2.2 基线 + V2.2.2 §4.5 响应体 / 兜底路由订正 + V2.2.3 字段语义定稿 + V2.2.4 §4.4 `online` 口径对齐 + V2.2.5 设备与控制码接口按 CO-2026-11-18-05 改判 + **V2.2.6 变更记录勘误（行号／闭合项）** + **V2.2.7 跨文档引用改引节名（行号三次漂移）／`4092` HTTP 400 经产品确认** + **V2.2.8 设备凭据不随绑定撤销（身份≠授权）／`/devices/list` 返回集合定死** + **V2.2.9 三处「产品侧待改」加闭合注（C1 过期文案／`binding.revoked` 交叉引用）** + **V2.2.10 新增设备端自解绑 `POST /devices/me/release`（关掉屏砖化 P1；本版起接口数 +1）** + **V2.2.11 `GET /devices/me` 三态与快照两态的分工写死（判「未绑定」的唯一载体是 REST；`unbound` 不得并入 `reason`）** + **V2.2.12 DDL 指针改为「文件名＋运维台账」（`migrations/0005` 指向废止件、且本仓库无 `migrations/`）** + **V2.2.13 屏端自解绑入口定案（长按右下角 3 秒＋二次确认，`released:false` 不是失败）** + **V2.2.15 撤销 V2.2.14 的未登录控制端（guest），并新增「绑还在、码没了 ⇒ `revoked`/`code_rotated`」**，见 §10 变更记录）
 - **更新日期**: 2026-11-18
 - **基础路径**: `/api/v1`
 - **维护人**: 软件开发工程师（接口实现）、软件产品设计（接口定义）
@@ -27,9 +27,7 @@ Authorization: Device <deviceToken>
 ```
 - `deviceToken` 由 §4.1 注册时签发，长期有效（不自动过期）；**不因「移出接管」（§4.3）或「刷新控制码」（§4.7）而撤销**（V2.2.8 改判，产品 2026-11-18 20:45 裁定；V2.2.5 原写「随绑定一起被撤销」已作废）。它是**身份**（这是哪一台设备），**不是授权**（这台设备现在有没有权限）——授权一律看 `device_bindings` 当前状态（§4.3 / §4.6 / §6 预签名都按绑定状态判，不按凭据本身）
 - 显示端接口**只认设备凭据**，**不得**用控制码换取任何状态或权限——码长期有效之后，「按码查」＝一条永久枚举通道（§4.7）
-- 控制端接口认两种凭据：登录用户 `Bearer <JWT>`（`sub` = `users.username`），未登录控制端 `Guest <guestToken>`（`sub` = `g_`+16hex，§4.8）。**两类不通用**：`Bearer` 验签后 `sub` 必须命中 `users`，`Guest` 验签后 `sub` 必须形如 `g_`+16hex，任一不符即 `1001`
-- **三类凭据（`Bearer` / `Device` / `Guest`）互不通用**：`Guest` 只在该 owner 自己的数据面内有效（§4.4 / §4.5 / §4.7 / §5 / §6 中按 `sub` 收窄的路径），**不得**用于 §1.2、§2.4 及任何 `role=admin` 路径
-- **凭证 vs 归属键（V2.2.14 红线）**：写进 `device_bindings.user_id` / `device_bind_events.user_id` / MQTT 主题段的永远只是**归属键**（用户名或 `g_…`），**永远不是凭证**。审计表只追加、永不清理，存进去＝永久留档
+- 控制端接口仍只认 JWT；两类凭据不通用
 
 ### 0.2 响应包络
 ```json
@@ -250,9 +248,8 @@ Authorization: Device <deviceToken>
 - `code` **8 位数字**；`ownerId` 即 `userId`（字段名沿用外部形状，不新增同义字段）
 - **同一张码可绑同户任意多台**（不同 `deviceId`）：第 2/3 台直接接管，先绑的屏**不掉线、不报错**。绑定**不消费码、不换码、不续码**
 - `4091 设备已被占用` **只针对同一个 `deviceId` 已被其他用户绑定**——不同 `deviceId` 永远不会撞 4091；同户「踢出后重绑同一张码」是正常成功并记 `rebind` 审计，**不是** 4091
-- `4092` 码无效（**不存在 / 已轮换 / guest 码已过期**统一回答，不区分，防枚举）；同一 IP 1 分钟内第 11 次**失败** ⇒ `4094`
-  - **`4094` 只对失败计数（V2.2.14）**：一个学校出口 NAT 后面可能有十几台屏在装机日同时输码，成功也计数会让它们互相挤掉。10 次/分钟是防枚举的预算，不是防装机的预算
-  - guest 路径下回传的 `ownerId` 形如 `g_…`：本接口**原样**使用，**不得**按「像不像用户名」校验（§4.8）
+- `4092` 码无效（**不存在 / 已被轮换**统一回答，不区分，防枚举）；同一 IP 1 分钟内第 11 次**失败** ⇒ `4094`
+  - **`4094` 只对失败计数（V2.2.15）**：一个学校出口 NAT 后面可能十几台屏在装机日同时输码（同一张码、一码多屏，全部会成功），成功也计数会让他们互相挤掉。10 次/分钟是防枚举的预算，不是防装机的预算
 - 副作用（同一次请求内）：写 `device_bindings`（`user_id` / `bound_at`）＋ 覆盖 `cds/v1/d/{deviceId}/bind` 快照 `{state:'bound', userId}`，同一事务边界（`mqtt.md` §3、V2.2.23）
 
 ### 4.3 移出接管（踢出单台）
@@ -336,7 +333,7 @@ GET /devices/{deviceId}/state
 | 层 | 字段 | 来源 | 硬约束 |
 |---|---|---|---|
 | **L1 照搬** | `nowPlaying`、`pageMap`、`viewing`、`layout` | 该设备最后一条 `state.report`（retain） | 与 `mqtt.md` §4.4 **同名同形**：`pageMap` 恒 **7 字段**、`viewing` 恒 **3 字段**（`volumeId`/`chapterSn`/`anchorVerseSn`）、`layout` 恒 **5 项**、`nowPlaying` 字段集不变。**不改名、不裁剪、不补默认值**；要加字段先在 `mqtt.md` 立定义，再搬 |
-| **L2 登记表** | `deviceId`、`owner`、`scene`、`lastSeenAt`、`stateTs` | `device_bindings` + 已处理的最大 `ts` | `owner` ＝ **`device_bindings.user_id`**（V2.2.14 订正：原写 `devices.user_id`，而该列自 CO-05 起**停止写入**，guest 归属（`g_…`）永远不会出现在那里；照旧读会让所有屏的 `owner` 恒为 `null`）；`lastSeenAt` 由心跳 / `presence` 更新；`stateTs` ＝ 最后一条**通过过期检查**的 report 的 `ts` |
+| **L2 登记表** | `deviceId`、`owner`、`scene`、`lastSeenAt`、`stateTs` | 服务端 `devices` 表 + 已处理的最大 `ts` | `owner` ＝ **`device_bindings.user_id`**（V2.2.15 订正：原写 `devices.user_id`，而该列自 CO-05 起**停止写入** ⇒ 照旧读会让所有屏的 `owner` 恒为 `null`）；`lastSeenAt` 由心跳 / `presence` 更新；`stateTs` ＝ 最后一条**通过过期检查**的 report 的 `ts` |
 | **L3 派生** | `online` | `presence` / 心跳 | **禁止转抄 `state.report.online`**，见下条 |
 
 - **`online` 必须独立判定，不得取自 retained `state`**：`mqtt.md` §4.4 已写明「显示端离线时 retained `state` 仍是最后一条 `online:true`」，照抄会让断线的屏永远显示在线——这正是「同一事实两处定义」换个形式再来。口径：`now − lastSeenAt ≤ 75s`（25s `device.ping` × 3 次无 `pong` 判链路异常）**且** broker 侧该 `deviceId` 无存活连接；两者缺一即为 `false`。**边界（V2.2.3）**：`online:false` 时**不得**把 `lastSeenAt`/`stateTs`/四个 L1 字段一并置 `null`——断线前的最后状态必须留着，否则控制台无法解释「屏上为什么还停在那篇文章」。`online` 与 `stateTs` **互不替代**：前者答「设备是否在线」，后者答「这条状态多久以前」。
@@ -361,11 +358,15 @@ Authorization: Device <deviceToken>
 - ⚠️ **本接口三态、快照两态，是设计而非不一致（V2.2.11 写死）**：状态机确有三种状态，但「从未绑定」在快照上只能表现为**一条消息都没有**——快照一旦存在，就说明发生过一次迁移。故 `mqtt.md` §3 的 `state` 只写 `bound`/`revoked`，解绑时用**空 payload 清 retained**、**不发** `state:"unbound"`（否则「`unbound`」与「一条消息都没有」二义，两者无从区分）。由此两条判据分开，不得互相替代：**判「未绑定」的唯一合法载体是本接口的 `state:"unbound"`**，验收不得改判快照；反过来「无 retained」**不得**单独判未绑定（V2.2.26 口径，须本接口同判再下结论）。
 - ⚠️ `unbound` **不得**并入 `reason`（V2.2.11）：`reason` 只取 `code_rotated`/`kicked`/`unbind` 三值，它答的是「为什么被撤」，而 `unbound` 答的是「从未绑过」，两者不是同一条轴的取值；合并会让「被撤」与「从未绑」共用一种提示，C1 的三句文案随即失效
 - `reason` ∈ `code_rotated` / `kicked` / `unbind`，**只决定文案**，不得当事件触发器。`unbind` 自 V2.2.10 起由 §4.3.1（屏端自解绑）产生——此前该值只在枚举里、**没有任何生产者**。⚠️ `mqtt.md` §3 的 `device.bindState` 快照曾把同一字段写成 **`unbound`**，V2.2.30 已统一为 `unbind`：`unbound` 只是 `state` 的取值（本接口三态之一），不是 `reason` 的取值。三种 `reason` **必须**对应三种可区分的提示文案（文案由产品定，本协议不写死文字）。
+- ⚠️ **「绑还在、码没了」⇒ 失效（V2.2.15 新增；Jeremyzh 2026-11-18 22:10 原话「数据库不存在这个码了，屏端就过期了」）**：本接口（以及任何设备自重检）查到 `device_bindings` 有未撤销的行、但其归属者 `user_id` 在 `control_codes` 里**已无行**时 ⇒ 返回 `state:"revoked"`、`reason:"code_rotated"`，并在**同一事务**内覆盖 `d/{deviceId}/bind` 快照、清该屏两条 retained（副作用同 §4.3）。
+  - 判据只有一句：`SELECT 1 FROM control_codes WHERE user_id = ?` 返回 0 行 ⇒ 失效。**不得**用「retained 快照缺失」替代（V2.2.24 / V2.2.26 已定：快照会因 TTL、broker 丢失、主题发错而缺失）。
+  - 这是**设备凭据认证自身**，不是按码查询：路径不带码、不新增接口、不引入字段，`4094` 与「禁 `GET /control-code/{code}`」两条红线**都不受影响**。
+  - 不做这条的后果：老师账号注销、码行被清理、或代码绕过 `rotate` 直接删行之后，**已绑的屏仍然继续显示、继续被投内容**——授权看的是 `device_bindings`，而它不看码；屏端只会一直在 `bound` 态上跑，没有任何人能控它。
 - **只按设备凭据回答「我这条绑定还有效吗」**：请求体/查询串里**不得**带控制码，路径里**不得**有码段；凭据不符 ⇒ `1001`，且**不泄露**其他用户的绑定信息（不可枚举）
 - 用途：`mqtt.md` §6-2 启动顺序第 ① 步（先拿 `userId` 才能注册 LWT）以及重连后的对齐
 - **DB 为准（V2.2.24 口径）**：本接口读 `device_bindings`，**不读** retained 快照；快照缺失/不符时以本接口为准并由服务端补写快照——**不得**因「`d/{deviceId}/bind` 上没有 retained」就判未绑定
 
-### 4.7 控制码（控制端；**一个 owner 一张**：登录用户长期有效，guest 见 §4.8）
+### 4.7 控制码（控制端；每用户一张、长期有效）
 ```
 GET /control-code
 Authorization: Bearer <JWT>
@@ -380,70 +381,13 @@ Authorization: Bearer <JWT>
 ```json
 { "code": 0, "data": { "userId": "user_001", "code": "73910284", "rotatedAt": 1763350060000, "revokedCount": 2 } }
 ```
-- **路径不带码（V2.2.5 红线）**：不得新增 `GET /control-code/{code}`、`POST /bind/{code}` 一类接口。码长期有效之后，「按码查状态」就是一条**永不关闭的枚举通道**；验收 C1 的 `rg -i 'control-code/\{|/bind/\{'` 必须保持 0 命中。⚠️ **该判据有假阳性（V2.2.14 收紧）**：禁止性散文里本身就含这些字符串（本节、§4.3、§10 都写了「不得新增…」），全文 grep 永不为 0；只匹配端点定义行才成立：`rg '^\s*(GET|POST)\s+/(control-code/\{|bind/\{)'`
-- `code` 固定 **8 位数字**：无 `codeFormat`；**登录用户路径**无 `expiresAt`、无倒计时
-  - ⚠️ **`rg -i 'expiresAt|codeFormat|countdown'` 的 0 命中判据自 V2.2.14 起必须限定范围**：guest 路径**合法返回 `expiresAt`**（§4.8.1）。按全文 grep 会把正确实现判失败（假失败），正是本轮在灭的那类缺陷。该判据只对「登录用户路径 + 屏端输码态」有效
+- **路径不带码（V2.2.5 红线）**：不得新增 `GET /control-code/{code}`、`POST /bind/{code}` 一类接口。码长期有效之后，「按码查状态」就是一条**永不关闭的枚举通道**；验收 C1 的 `rg -i 'control-code/\{|/bind/\{'` 必须保持 0 命中。⚠️ **该判据有假阳性（V2.2.15 收紧）**：禁止性散文里本身就含这些字符串（本节、§4.3、§10 都写了「不得新增…」），全文 grep 永不为 0；只有只匹配**端点定义行**才成立：`rg '^\s*(GET|POST)\s+/(control-code/\{|bind/\{)'`
+- `code` 固定 **8 位数字**：无 `codeFormat`、无 `expiresAt`、无倒计时（`rg -i 'expiresAt|codeFormat|countdown'` 应 0 命中）
 - `rotate` 语义（⟳ ＝ 更新控制码 ＝ 重置接管）：**换码 + 撤销该用户全部绑定**——`control_codes.rotated_at` 更新、该用户所有 `device_bindings.revoked_at = now`（`reason=code_rotated`）、逐台覆盖 `d/{deviceId}/bind` 快照并清各台 retained，**同一事务边界**
   - **只换码不撤绑定＝按失败记**：旧屏会拿旧码继续被控，正是 CO-05 要消灭的状态
   - 绑定成功后**不自动续码**、码**不被消费**（`rg -i 'reissueCode|code_issued'` 应 0 命中）
 - `revokedCount` ＝ 本次被撤销的绑定数。控制台二次确认里的 N **取 `GET /devices/list` 的 `online:true` 计数**（在线可被踢的台数），不得用本值替代（两者不同：离线屏也要撤，但不会在 3s 内回输码页）
 - 权限：只能读写 **`token.sub` 自己**的码；跨用户 ⇒ `1003`
-
-### 4.8 未登录控制端（guest；V2.2.14）
-
-> Jeremyzh 2026-11-18 22:05 定（经 Chief 转达）：**控制端不登录也能拿到一张 8 位码，由屏在输码页输入这张码**（方向反转：控制端 → 屏）；**不造 `users` 行、不造匿名账号**。DB 形状见 `migrations/0005_control_codes_and_styles.sql` **rev3**（`control_codes.owner_id` / `owner_kind` / `expires_at`）与 `database.md` V2.2.3。
->
-> **一句话**：`ownerId` 是**归属键**（公开标识），`guestToken` 是**凭证**。两者分开，是因为归属键要被写进只追加、永不清理的 `device_bind_events.user_id`；把凭证当归属键＝把口令永久留档（与「码不得存进审计表」是同一条禁令，只换了个列名）。
-
-#### 4.8.1 首次取码（本版**唯一**新增接口）
-
-```
-POST /control-code/guest
-（无 Authorization）
-```
-```json
-{ "code": 0, "data": { "ownerId": "g_9f3c1a2b4d5e6f70", "code": "48291370",
-                       "guestToken": "<JWT>", "expiresAt": 1763356800000 } }
-```
-- **`ownerId` 不是凭证**：它是归属键，会写进 `device_bindings.user_id`、`device_bind_events.user_id`，并出现在 MQTT 主题段 `u/{ownerId}/...`（`mqtt.md` §2）。知道它不足以做任何事——所有控制接口都要凭证
-- **`guestToken` 才是凭证**：签名 JWT（`sub = ownerId`、claim `kind="guest"`、`exp`），明文**只回这一次**；服务端**不存明文也不存哈希**（无状态，不新增表）。客户端必须自存（localStorage）；丢了不可恢复（4.8.4）
-- `code` 8 位数字，规则与 §4.7 完全一致（同一张表、同一个唯一索引 `ux_control_codes_code`）；**屏端输码 UX 一字不变**（4-4 分组、8 位数字）
-- **这是未鉴权的建行接口**：必须按 IP 限流（与 `4094` 同一套），否则可无限铸身份把 `control_codes` 撑满。生成要**碰撞重试**：`ownerId` 不得与 `users.username` 重、`code` 不得与全表重（唯一索引兜底）
-- **用户名不得以 `g_` 开头**（注册侧校验）：归属键与用户名共用一列 `owner_id`，命名空间重叠＝guest 可冒充用户
-- 本接口**不**接收、**不**返回任何账号信息；没有密码、没有邮箱、没有找回
-
-#### 4.8.2 展示 / 刷新（**共用 §4.7 的两条路径**，不新增）
-
-```
-GET /control-code           Authorization: Guest <guestToken>
-POST /control-code/rotate   Authorization: Guest <guestToken>
-```
-- 响应形状与 §4.7 逐字相同；`userId` 字段对 guest 返回 `ownerId`（`g_…`）——沿用 §4.2「不新增同义字段」的口径，控制端自己知道自己是 guest，不需要服务端再标一遍
-- `rotate` 对 guest 的语义与登录用户**完全一致**：**换码 + 撤销该 owner 全部绑定**，并**续期**（`expires_at = now + TTL`）。它同时是「码过时了」的唯一合法出路，和「凭证泄漏」的唯一止血手段——撤完绑定，拿到凭证的人也没有屏可控（新绑必须物理碰到屏）
-
-**⚠️ 与 Chief「并存不合并」的唯一分歧（请裁定，V2.2.14 已按此写）**：我保留了**同一条路径**、只按凭据类型分支，而不是另起 `/guest/control-code` 一族。理由两条：① `rotate` 是「换码 + 全户踢出 + 逐台覆盖 `bind` 快照 + 清两条 retained」的**多步事务**，两套实现必然分叉，而本轮所有事故都是同一事实两处定义；② 两类调用者的权限判定是**同一句**（`control_codes.owner_id == token.sub`）。若裁定必须分开：我照改，但两条 `rotate` 必须共用同一个内部函数，且验收要**同时**跑两条路径。
-
-#### 4.8.3 过期：只禁新绑定、**不踢已绑**（Jeremyzh 口径，我同意）
-
-- 码过期**只**影响 §4.2 第 1 步：`SELECT owner_id FROM control_codes WHERE code = ? AND (expires_at IS NULL OR expires_at > unixepoch())` 查不到 ⇒ `4092`（**不区分「不存在」与「已过期」**，防枚举）
-- 已绑的屏**不**被撤销、**不**回输码页，仍出现在 §4.4 列表里、仍计入 4 台上限
-- 理由：课到一半把屏踢回输码页是**用户可见的破坏**；「码过期」表达的只是「这个控制端一段时间没用」，不表示「它的屏该回收」。fail-safe 的方向是保留控制，不是收回
-- **硬约束**：`guestToken` 的有效期必须 **≥** 码的 `expiresAt`（实现取 `max(expires_at, now + SESSION_TTL)`，并滑动续期）。否则码一过期，屏还 `bound` 着、而唯一能控它的凭证已失效 ⇒ **屏画面完全正常，只是谁也控不了**，只能走到屏前长按 3 秒（§4.3.1）回收。这不是砖化，但**比砖化更难被发现**——验收要单独有一条
-- **不得**为 guest 新增「按码续期」：那又把码变回凭证（4.8.5）
-
-#### 4.8.4 丢凭证 ＝ 丢身份（写明，不遮掩）
-
-guest 身份只活在控制端 localStorage：换设备、清缓存、换浏览器 ⇒ **不可恢复**（无账号可登）。已绑的屏**不会**自动回输码页，变成「无主但仍 `bound`」：只能由屏端长按解绑（§4.3.1），或将来的管理员 `POST /devices/{deviceId}/release`（未实现）。
-
-这是「不造账号」的直接代价。**不得**用「跨 owner 输码即改绑」绕开：那等于任何人走到屏前输入自己的码就能**静默接管**别人正在用的屏（§4.3 红线，`4091` 必须保留）。
-
-> 运维含义（不写进验收）：guest 身份易失 ⇒ **`4091` 从「异常」变成「日常」**。控制端页面不能清缓存；屏换控制端要走屏上那个长按入口。这条要产品在 UI 上说清楚，否则现场会把「屏被占用」当成故障报修。
-
-#### 4.8.5 为什么 guest 必须有凭证、且码不得兼任凭证
-
-- 控制接口若按码授权 ⇒ 一条**永不关闭的枚举通道**（§4.7 红线：不得新增「以码作路径段」的接口；本版一字未松）
-- 码只在**一次**换绑动作里被读取：屏端提交 → 服务端查库；此后屏与控制端之间**再无码流转**
-- 反过来，把归属键当凭证更糟：它要写进 `device_bind_events.user_id`，而该表**只追加、永不清理**（`0005` 附 4.0）⇒ 等于把口令永久留档，备份泄漏即泄漏
 
 ---
 
@@ -560,11 +504,9 @@ POST /cast/presign
 
 ## 8. 安全
 
-- 全部写操作走凭据 + 归属校验：归属键（`device_bindings.user_id`）必须等于凭据的 `sub`（`Bearer`/`Guest`）或设备凭据查出的 owner（`Device`）
-- 三类凭据：`Bearer`（登录用户 JWT）／`Device`（显示端长期凭据）／`Guest`（未登录控制端签名令牌，§4.8）；**互不通用**
-- ~~设备码 30 秒过期，一次性使用~~ **已作废（V2.2.5 / CO-05）**：设备注册不再产生任何码，屏只拿长期 `deviceToken`；控制码是 8 位数字、登录用户长期有效（guest 有 `expiresAt`，§4.8.3），唯一防线是 `4094` 限流——**限流是唯一防线**这句话在 guest 出现后更重要：取码接口未鉴权
-- 控制接口限流：单设备 20 req/s；控制码提交按 IP 10 次/分钟（**只对失败计数**，§4.2）
-- **凭证永不落库、永不入审计、永不进主题**：`device_bind_events.credential_id` 存 `display_tokens.token_id`，`kind='code'` 时必须为 `NULL`；guest 的 `guestToken` 根本不出现在任何表里
+- 全部写操作走 JWT + 设备归属校验（`device.user_id == token.sub`）
+- 设备码 30 秒过期，一次性使用
+- 控制接口限流：单设备 20 req/s
 - 第三方同步接口仅 `role=admin`
 
 ---
@@ -582,7 +524,7 @@ POST /cast/presign
 | 3001 | 服务器内部错误 | 500 |
 | 3002 | 第三方音乐接口失败 | 502 |
 | 4091 | 设备已被占用：**同一 `deviceId`** 已被**其他用户**绑定（同码绑同户多台**不**触发） | 409 |
-| 4092 | 控制码无效（**不存在 / 已轮换 / guest 码已过期**统一回答，不区分，防枚举） | 400 |
+| 4092 | 控制码无效（**不存在 / 已被轮换**统一回答，不区分，防枚举） | 400 |
 | 4093 | 投屏内容 URL 无效 / 预签名已过期，需重新申请 | 410 |
 | 4094 | 尝试过于频繁（控制码按 IP 10 次/分钟，**只对失败计数**；指数退避） | 429 |
 | 4095 | 音频锚点已被其他终端占用（另一窗口/终端正在播放） | 409 |
@@ -594,7 +536,7 @@ POST /cast/presign
 
 ## 10. 变更记录
 
-- **V2.2.14 (2026-11-18)**：**未登录控制端（guest）——归属键与凭证分离 ＋ `POST /control-code/guest`（接口数 +1）＋ 过期语义（只禁新绑定）**（Jeremyzh 22:05「屏端输码，不是屏端出码；不需要匿名账号」，经 Chief 22:0x 转达；DDL 见 `0005` **rev3**、`database.md` V2.2.3、`mqtt.md` V2.2.33）。① **方向反转**：码由控制端生成/展示、**由屏输入**；`POST /devices/bind` 形状不变（仍是屏凭设备凭据提交 8 位码），**不新增绑定接口**。② **归属键 ≠ 凭证**：`ownerId = 'g_'+16hex` 是公开标识（写 `device_bindings.user_id` / `device_bind_events.user_id` / 主题段），`guestToken`（签名 JWT，`sub=ownerId`、`kind='guest'`）才是凭证，**不落库、不入审计、不进主题**。反例（被否）：只发一个 owner_id 当身份——谁看到谁就能控，且它要写进只追加永不清理的审计表，等于把口令换个列名再泄一次。③ **唯一新增接口 `POST /control-code/guest`**（无鉴权、按 IP 限流、碰撞重试、用户名不得以 `g_` 开头）；展示/刷新**共用 §4.7 两条路径**，凭据换成 `Guest`——这是我与 Chief「并存不合并」的唯一分歧，理由与回退方案写在 §4.8.2，**请裁定**。④ **过期＝只禁新绑定、不踢已绑**（`4092` 统一回答，不区分已过期）；硬约束：`guestToken` 有效期 ≥ 码 `expiresAt`，否则屏画面正常却谁也控不了（比砖化更难发现）。⑤ **丢凭证＝丢身份**，已绑屏变「无主但仍 bound」，只能屏端长按回收；**不得**用「跨 owner 输码即改绑」绕开（`4091` 保留）——`4091` 由异常变日常，需产品在 UI 交代。⑥ 三处同源订正：§4.5 L2 `owner` 由 `devices.user_id` 改 **`device_bindings.user_id`**（该列自 CO-05 起停止写入，guest 归属永不出现在那里）；§8 删除「设备码 30 秒过期，一次性使用」这条 CO-05 前的陈述并补三类凭据；§4.7 的 `rg 'expiresAt'` 0 命中判据**限定范围**（guest 路径合法返回 `expiresAt`）。⑦ 「路径不带码」红线**未松**：端点定义行仍是 0 命中。⚠️ **原 `rg -i 'control-code/\{|/bind/\{'` 判据本身有假阳性**——禁止性散文里同样含这些字符串（§4.3、§4.7、§10 各有一处），全文 grep 永远不可能为 0；自本版起判据收紧为 `rg '^\s*(GET|POST)\s+/(control-code/\{|bind/\{)'`，只匹配**端点定义行**。**未动**：`/devices/bind`、`/devices/unbind`、`/devices/me/release`、`/devices/list` 返回集合、`/control-code` 用户路径形状、`4091`/`4092` 的 HTTP 状态码。
+- **V2.2.15 (2026-11-18)**：**撤销 V2.2.14 的未登录控制端（guest）全部内容 ＋ 新增「绑还在、码没了 ⇒ 失效」**（Jeremyzh 22:10 三句裁决，经 Chief 22:10 转达；只动文档，原型与 DDL 零改动）。① **guest 整体作废**：原话「**控制端一定需要登录，屏端不需要登录**」「码不过期，除非控制端把码刷新了」「数据库不存在这个码了，屏端就过期了」⇒ 不造匿名身份、不造 guest 归属键、不改 `control_codes` 主键、不开 `0006`，**零 DB 变更**（0005 仍按 rev2 promote）。V2.2.14 的 `POST /control-code/guest`、`Guest <guestToken>` 凭据类型、`expiresAt`、`owner_kind`、`g_`+16hex 全部**删除**，接口数回到 V2.2.13 的基线（测试不得再按 V2.2.14 的接口清单跑）。rev3 DDL 已归档 `docs/changes/superseded/0005_control_codes_and_styles.rev3-guest归属键.SUPERSEDED`。② **保留（与 guest 无关的实质订正）**：§4.5 L2 的 `owner` 由 `devices.user_id` 改 **`device_bindings.user_id`**（该列自 CO-05 起停止写入，照旧读会让所有屏的 `owner` 恒为 `null`）；`4094` **只对失败计数**（一码多屏，装机日批量输码全部会成功，成功也计数会互相挤掉）；「路径不带码」判据**收紧为只匹配端点定义行**（原判据含禁止性散文，全文 grep 永不为 0，属假失败）。③ **新增一条**（这是三句裁决里唯一原先没有实现路径的）：`GET /devices/me` 及任何设备自重检，若绑定存在但 `control_codes` 已无其归属者的码 ⇒ `state:"revoked"`、`reason:"code_rotated"`、同事务覆盖快照并清两条 retained（见 §4.6）。不破 `4094`、不破「禁 `GET /control-code/{code}`」、零新字段。④ **码不设 `expires_at`**：失效的唯一途径是控制端 `rotate`（旧码从库里消失）。**未动**：`/devices/bind`、`/devices/unbind`、`/devices/me/release`、`/devices/list`、`/control-code`、`/control-code/rotate`、`4091`/`4092` 及其 HTTP 码、`GET /devices/me` 三态口径。
 - **V2.2.13 (2026-11-18)**：**屏端自解绑入口定案 ＋ `released:false` 的消费语义写死**（Jeremyzh 21:57 ①，经 Chief 21:57 转达；只动本文件，`mqtt.md` 同源修正见其 V2.2.32）。① 入口由「双击角落/长按，UI 由显示端定」改为**已定案**：右下角不可见热区、**长按 3 秒**→屏上**二次确认**→本接口；UI 细节归 `mqtt.md` §4.6.5 ⑮，本接口**不为之增加任何字段**（确认态不下发不上报——解绑是屏对自己发起的动作，控制台既无需同意也无法阻止，多一个确认态只会造出「控制台显示待确认、屏上其实已解绑」的错位）。② **`released:false` 不是失败**：显示端仍须跳回输码页并当作「已解绑」处理；`false` 表示「现在本来就没绑定」，与刚解绑成功后的屏幕状态相同。③ 「双击、重试、网络重放」里的「双击」改为「长按重试」（入口已不是双击）。**未动**：接口路径与方法、请求头、响应体形状、`released` 两个取值、审计写法（`action='unbind'`、`credential_kind='token'`）、同事务副作用、不撤 `deviceToken`、不换 `deviceId`、§4.6 三态、`1001`/`1002`。
 - **V2.2.12 (2026-11-18)**：**DDL 指针改为「文件名＋运维台账」（零接口／零字段／零 schema 变更）**。起因：运维 21:5x 复核发现 `migrations/` 里那份 `0005` 是**旧模型**（一码一用、15min 过期、无 `device_bindings`），已移入 `docs/changes/superseded/0005_control_codes_and_styles.pre-co05.SUPERSEDED`（11,174 B）；而本文档（§6 预签名、§10 V2.2.5 条目）与 `database.md`、`mqtt.md` 都写「见 `migrations/0005` rev2 草案」——**照指针落地会落到废止件**，且本仓库 git tree 里根本没有 `migrations/` 目录（指针在仓库内无处可解，这是「文档指向 → 落到废止件」的完整路径）。① §6 那句的指针改为 `migrations/0005_control_codes_and_styles.sql`（rev2 定稿；**DDL 不在本仓库**，由运维维护，sha256 与 promote 状态以 `migrations/README-0005.md` 台账为准）；② §10 V2.2.5 条目里的同一指针**按历史保留、不回头改**（R-02：删改历史陈述会让按头回溯判成「这条不存在」），以本条为有效指针；③ 同源修正 `database.md` V2.2.2、`mqtt.md` V2.2.31。**未动**：任何接口、字段、状态码、错误码、schema、`device_bindings` 五列与「两态判定」。
 - **V2.2.11 (2026-11-18)**：**`GET /devices/me` 三态 vs `device.bindState` 两态的分工写死**（产品 22:06 提问：她验收里「判未绑定＝`state:"unbound"`」三处要不要跟着快照一起改）。**结论：不改，也不把 `unbound` 并进 `reason`。** ① 状态机三态不变（`bound`/`revoked`/`unbound`），`reason` 仍只有 `code_rotated`/`kicked`/`unbind`——`unbound` 从来不是 `reason` 的取值（拼写统一见 V2.2.10 ⑤）。② 快照只承载 `bound`/`revoked` 的理由写进 §4.6：快照存在即「发生过迁移」，「从未绑定」等价于「没有消息」；若再发一条 `state:"unbound"`，就出现「`unbound`」与「一条消息都没有」的二义。③ 判据分工：判「未绑定」只认本接口；「无 retained」单独不得判未绑定（V2.2.26）。④ 新增一句硬约束：`unbound` **不得**并入 `reason`——两者不是同一条轴的取值，合并会让「被撤」与「从未绑过」共用一种提示，C1 的三句文案随即失效。⑤ 信息头 V2.2.10 → **V2.2.11**（同 R-02）。**零接口变更、零 schema 变更、零错误码变更、零状态码变更**。
