@@ -2,7 +2,7 @@
 
 ## 📋 文档信息
 
-- **版本**: V2.2.2（V2.2 基线 + V2.2.2 §4.5 响应体 / 兜底路由订正，见 §10 变更记录）
+- **版本**: V2.2.4（V2.2 基线 + V2.2.2 §4.5 响应体 / 兜底路由订正 + V2.2.3 字段语义定稿 + V2.2.4 §4.4 `online` 口径对齐，见 §10 变更记录）
 - **更新日期**: 2026-11-18
 - **基础路径**: `/api/v1`
 - **维护人**: 软件开发工程师（接口实现）、软件产品设计（接口定义）
@@ -248,6 +248,8 @@ GET /devices/list
 }
 ```
 
+**`online` 口径（V2.2.4，与 §4.5 同口径，不得另立一套）**：`now − lastSeenAt ≤ 75s`（25s `device.ping` × 3 次无 `pong` 判链路异常）**且** broker 侧该 `deviceId` 无存活连接；两者缺一即 `false`。**不得转抄 retained `presence` / `state`**——显示端离线时 retained 仍是最后一条 `online:true`，照抄会让断线的屏永远显示在线。`lastSeenAt` 由心跳 / `presence` 更新，与 §4.5 的 L2 同源。
+
 ### 4.5 设备当前状态（降级轮询用）
 ```
 GET /devices/{deviceId}/state
@@ -439,6 +441,7 @@ POST /cast/presign
 
 ## 10. 变更记录
 
+- **V2.2.4 (2026-11-18)**：**§4.4 `GET /devices/list` 的 `online` 口径对齐 §4.5**（产品 V2.1.25，commit `706e2f5` 要求：控制台取「台数 N」用本接口，两处 `online` 不得各说各话）。① §4.4 补口径句：`now − lastSeenAt ≤ 75s` **且** broker 侧无存活连接，两者缺一即 `false`；**不得转抄 retained `presence`/`state`**。② 文档信息头版本回填 **V2.2.2 → V2.2.4**（V2.2.3 已改正文与变更记录但漏改头，按头回溯会判成「这条口径不存在」，同 R-02）。**零 schema 变更**：`/devices/list` 响应形状不动，不新增错误码。
 - **V2.2.3 (2026-11-18)**：**§4.5 响应体按产品 V2.1.24 确认定稿**（变更单 §4.24，commit `dfe423a`）。① `viewing` **进 L1**（原写「暂不进」）：`viewing` 本来就在 `mqtt.md` §4.4 的 `state.report` 里，而 `pageMap.anchor` 缺 `volumeId`/`chapterSn`，轮询降级会丢「哪一章」；`casting`（由 `scene=="cast"` 推得）/ `appVersion`（运维登记）**仍不进**。② `stateTs` **不得用统一阈值判过期**：`scene=music` ⇒ `>15s` 标「快照 N 秒前」，`article`/`cast`/`standby` 不按时间判、只附相对时间（文章只在切章/位置变化时上报，统一阈值会把正常场景判成陈旧）。③ `online:false` 时**不得清空** `lastSeenAt`/`stateTs`/L1 字段，且 `online` 与 `stateTs` 互不替代。④ 乱序裁剪补判据：构造 `ts` 倒退的 report，两条通道 `pageIndex` 都不得后退。⑤ 无上报时 **四个** L1 字段为 `null`（含 `viewing`）。**零 schema 变更**，`state.report` 形状不动，不新增错误码。
 - **V2.2.2 (2026-11-18)**：**`GET /devices/{deviceId}/state` 补齐响应体 + 兜底路由订正**（Chief 19:28 分工：开发起草 / 产品确认字段语义 / 运维出断言；起因：产品 V2.1.18 核实「`layout` 缺口在 REST 不在协议」，本文件 `layout` 曾 0 命中、§4.5 只有路由无响应体）。① 响应体字段**三层分源**：L1 `nowPlaying`/`pageMap`/`layout` 从 `state.report` **同名同形照搬**（`pageMap` 恒 7 字段、`layout` 恒 5 项；不改名/不裁剪/不补默认值），L2 `deviceId`/`owner`/`scene`/`lastSeenAt`/`stateTs` 由服务端登记表给出，L3 `online` 由 `presence`/心跳派生；② 明令 **`online` 不得转抄 `state.report.online`**（retained `state` 离线仍是 `online:true`），口径 `now − lastSeenAt ≤ 75s` **且** broker 侧无存活连接；③ 无上报时 L1 三字段为 `null`（不得伪造 `{}`/`0`），控制台 `c_max` 回退 1728 并标「估算」；④ 新增 `stateTs`（轮询 2s ≠ 上报 5s，无它无法判新鲜度，且不得用包络 `ts` 冒充）；⑤ 过期/乱序 report 的丢弃在写入侧做一次，REST 只返回裁剪后的当前值；⑥ `viewing`/`casting`/`appVersion` 暂不进本响应（要加先改 `mqtt.md` §4.4）；⑦ 订正 §4「投屏与音乐的关系」兜底行：`/control/player/play`、`/control/player/resume` → **`/control/play`、`/control/resume`**（与 §5 路由表一致；REST 侧没有 `player/` 段，`player.*` 是 MQTT 术语）。**零 schema 变更**，`state.report` 形状不动，不新增错误码。
 - **V2.2.1 (2026-11-18)**：错误码与 D-04 口径订正。① §4 投屏 URL 过期 `ack 4004` → **4007**（4004 是"音频地址不可达"）；② §9 新增 4094 限流 / 4095 音频锚点被占 / 4096 `audio_blocked_by_scene`，包络新增可选 `error`；③「投屏与音乐的关系」按 V2.1.2 反转（编排层 pause-first、`cast.end` 不续播）；④ 文档信息头由 V2.2 / 2026-11-17 更正为 **V2.2.1 / 2026-11-18**（此前正文已改、头未改，属 R-02：按头回溯会判成「这条口径不存在」）。
