@@ -382,6 +382,10 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
   function saveCode(){
     LS.setItem('cds.codeObj', JSON.stringify(S.codeObj));
     LS.setItem('cds.consoleCode', S.codeObj.code);
+    // V2.1.47：屏端**不得**持有码副本（api.md §4.2）。演示里屏只记「码修订号」——随机串、不含码，
+    // 码一变修订号就变 ⇒ 屏按 reason=code_rotated 回输码页。真机这一位对应 control_codes.rotated_at。
+    if(!S.codeObj.rev) S.codeObj.rev = 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+    LS.setItem('cds.codeRev', S.codeObj.rev);
   }
   function setCode(c){ S.codeObj = { code:c }; saveCode(); renderCode(); }
   function newCode(){ return String(Math.floor(10000000+Math.random()*90000000)); }

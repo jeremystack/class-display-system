@@ -281,13 +281,15 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   }
   setInterval(beat, 1000);
 
-  // CO-2026-11-18-05：绑定是否仍有效只由服务端按**设备凭据**判（GET 只回 有效/已撤销，不按码查，
-  // 因此不能被枚举）。原型用同源 localStorage 的 cds.consoleCode 顶替服务端库：
-  // 控制台更新码 ⇒ 库里的码变了 ⇒ 本屏持有的码副本对不上 ⇒ 视为「本条绑定已被撤销」。
+  // CO-2026-11-18-05 / api.md §4.6：绑定是否仍有效**只由服务端按设备凭据判**——GET /devices/me 回
+  // state∈{bound,revoked,unbound}，路径不带码、不可枚举。配了 API 基点时只走服务端（checkBindingServer），
+  // 本地这条循环直接让位；未配基点＝原型演示，用同源 localStorage 的**码修订号**（`cds.codeRev`，随机串、
+  // 不含码）模拟「控制台刷新了码」——api.md §4.2：控制码**不得持久化**，它不按码查。
   function checkBinding(){
     if(!LS.getItem('cds.bound')) return;
-    var expect = LS.getItem('cds.consoleCode');
-    if(expect && expect !== (LS.getItem('cds.code')||'')){ sys('控制码已更新：本屏已退出接管', true, 3000); doRevoke('code_rotated'); return; }
+    if(API_BASE) return;                       // 服务端判定见 checkBindingServer()；两条路不得同时跑
+    var expect = LS.getItem('cds.codeRev')||'';
+    if(expect && expect !== (LS.getItem('cds.boundRev')||'')){ sys('控制码已更新：本屏已退出接管', true, 3000); doRevoke('code_rotated'); return; }
     // 单台移出（真机＝devices.revoked_at > devices.bound_at）。撤销早于本次绑定即无效记录，忽略。
     try{
       var rv = JSON.parse(LS.getItem('cds.revoked')||'{}') || {};
@@ -296,6 +298,29 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     }catch(e){}
   }
   setInterval(checkBinding, 2000);
+
+  // V2.1.47 / api.md §4.6：真机路径——启动即问一次、之后每 10s 一次（原型用轮询近似下行；真机的不
+  // 即时性是 MQTT 快照给的，轮询只是兜底，不是设计口径）。三条结论不得混：
+  // ① state='revoked' ⇒ 按 reason 分文案回输码页（code_rotated/kicked/unbind 三句可区分）；
+  // ② state='unbound' ⇒ 从未绑定/授权已清，同样回输码页（**不得**因「无 retained」推断，见 V2.2.26）；
+  // ③ 401（必须带 WWW-Authenticate: Device）⇒ **只清设备凭据**回注册，绝不动控制台 JWT 与码。
+  // 断网/5xx 一律不改状态（fail-safe：等下轮或 MQTT），不然一次抖动就把整班屏踢回输码页。
+  function checkBindingServer(){
+    if(!API_BASE || !LS.getItem('cds.bound')) return;
+    var tok=LS.getItem('cds.deviceToken')||''; if(!tok) return;
+    fetch(API_BASE.replace(/\/$/,'')+'/devices/me', {headers:{'Authorization':'Device '+tok}})
+      .then(function(r){ return r.json().then(function(j){ return {status:r.status, body:j}; }, function(){ return {status:r.status, body:{}}; }); })
+      .then(function(res){
+        var b=(res.body&&res.body.data)||res.body||{};
+        if(res.status===401 || res.status===403){
+          LS.removeItem('cds.deviceToken'); LS.removeItem('cds.deviceId');
+          doRevoke('unbind', '本机设备凭据已失效，请重新输入控制码'); return;
+        }
+        if(res.status!==200) return;
+        if(b.state==='revoked'){ doRevoke(b.reason||'kicked'); return; }
+        if(b.state==='unbound'){ doRevoke('unbind'); return; }
+      }).catch(function(){});
+  }
 
   // ── 数据 ──
   var S = { scene:'standby', standby:{ mode:'theme' }, music:{ idx:0, playing:false, pos:0, anchor:null, items:[
@@ -746,7 +771,11 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     return m?decodeURIComponent(m[1]):(window.CDS_API||''); })();
   function onBound(code, info){
     LS.setItem('cds.bound', '1');
-    LS.setItem('cds.code', code);            // 本屏持有的码副本：服务端只按**设备凭据**判有效，不按码查
+    // api.md §4.2 硬约束：**控制码不得持久化**。码是长期有效口令，留在 localStorage 等于把口令贴在
+    // 教室屏上——学生/清洁工开一次开发者工具就能读走，进而把自己的屏绑进老师账号、占满 4 台上限、
+    // 看到投屏内容。屏端只留 `deviceToken`（装机凭据）与**码修订号**（随机串，不含码）。
+    LS.removeItem('cds.code');                                  // 顺带清掉旧版本残留的码副本
+    LS.setItem('cds.boundRev', LS.getItem('cds.codeRev')||'');
     LS.setItem('cds.boundAt', String(Date.now()));
     if(info && info.deviceId){ LS.setItem('cds.deviceId', info.deviceId); }
     if(!LS.getItem('cds.credential')) LS.setItem('cds.credential', 'cred-'+Math.random().toString(36).slice(2,10));
@@ -755,32 +784,38 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     $('banner').hidden=true;
     if(BC){ BC.postMessage({kind:'ackBound', text:'教室屏幕已接管', deviceId:deviceId()}); }
     S.scene='standby'; render();
+    syncExitHot();            // 绑完立刻按内容态算热区：否则要等一次 resize 才长出来（自测抓到的第二处）
     sysOff();
   }
   function bindViaServer(code){
     var base=API_BASE.replace(/\/$/,''), tok=LS.getItem('cds.deviceToken')||'';
-    var auth={ 'Authorization':'Device '+tok, 'Content-Type':'application/json' };
+    // 凭据头必须**在注册之后**再取：首次使用 tok 为空，提前拼成 `Device ` 会被 Fetch 规范化成
+    // 无值的 `Device`（尾空格被裁掉），服务端一律 401 ⇒ 首台屏永远绑不上，第二台却能绑（自测抓到的真缺陷）。
+    function devAuth(){ return { 'Authorization':'Device '+(LS.getItem('cds.deviceToken')||''), 'Content-Type':'application/json' }; }
     var reg = tok ? Promise.resolve({ok:true, body:{deviceId:LS.getItem('cds.deviceId')||deviceId()}}) :
       fetch(base+'/devices/register', {method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({ label:'教室屏幕 '+deviceId().slice(-2), ua:navigator.userAgent }) })
       .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, status:r.status, body:j}; }); })
       .then(function(res){
-        var b=res.body||{};
-        if(!res.ok || !b.deviceToken) throw {kind:'no_token', status:res.status};
-        LS.setItem('cds.deviceToken', b.deviceToken);
-        if(b.deviceId) LS.setItem('cds.deviceId', b.deviceId);
-        return {ok:true, body:b};
+        // 同上：deviceToken / deviceId 在 data 里（api.md §4.1 响应体），读到顶层会恒抛 no_token
+        var b=res.body||{}, d=b.data||b;
+        if(!res.ok || !d.deviceToken) throw {kind:'no_token', status:res.status, code:b.code};
+        LS.setItem('cds.deviceToken', d.deviceToken);
+        if(d.deviceId) LS.setItem('cds.deviceId', d.deviceId);
+        return {ok:true, body:d};
       });
     reg.then(function(){
-      return fetch(base+'/devices/bind', {method:'POST', headers:auth, body:JSON.stringify({code:code})})
-        .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, status:r.status, body:j}; }); });
+      return fetch(base+'/devices/bind', {method:'POST', headers:devAuth(), body:JSON.stringify({code:code})})
+        .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, status:r.status, body:j}; }, function(){ return {ok:r.ok, status:r.status, body:{}}; }); });
     }).then(function(res){
-      var b=res.body||{};
-      if(res.ok && (b.state==='bound' || b.ok===true)){ onBound(code, b); return; }
-      var e=b.error||b.code||'';
-      if(e==='rate_limited'||res.status===429){ entryErr('尝试过于频繁，请 1 分钟后再试'); return; }
-      if(e==='invalid'||e==='code_invalid'||res.status===400||res.status===4091){ entryErr('控制码无效，请与控制台核对'); return; }
-      entryErr('无法完成绑定，请稍后重试（'+(res.status||'—')+'）');
+      // api.md 全站响应包一层 {code,data}，错误码是**数字**（4091 已占用 / 4092 码无效 / 4094 限流 / 1001 凭据）。
+      // 按 res.body.state 读是错的——它在 data 里面，会恒 undefined 并落到「无法完成绑定」那条兜底（自测抓到）。
+      var b=res.body||{}, d=b.data||b, ec=(typeof b.code==='number')?b.code:null;
+      if(res.ok && (d.state==='bound' || b.code===0)){ onBound(code, d); return; }
+      if(ec===4094 || res.status===429){ entryErr('尝试过于频繁，请 1 分钟后再试'); return; }
+      if(ec===4092 || res.status===400){ entryErr('控制码无效，请与控制台核对'); return; }
+      if(ec===4091 || res.status===409){ entryErr('本屏已被其他账号绑定，请联系管理员处理'); return; }
+      entryErr('无法完成绑定，请稍后重试（'+(ec||res.status||'—')+'）');
     }).catch(function(err){
       entryErr(err && err.kind==='no_token' ? '本机未能取得设备凭据，请重试或联系管理员' : '无法连接服务端，请检查网络后重试');
     });
@@ -834,7 +869,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   if(/[?&]reset=1/.test(location.search)) clearCode();
 
   // ── 控制台下行 ──
-  function doRevoke(reason){
+  function doRevoke(reason, text){
     // V2.1.43：确认框开着时收到 revoked ⇒ 直接关框回输码页，**不再发** release（设计要求 §3.4.1）
     if(typeof exitClose==='function') exitClose();
     // V2.1.23（CO-2026-11-18-04）：刷新控制码＝重置接管（reason=code_rotated）；全部解绑（reason=unbind）同走此路。
@@ -843,7 +878,10 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     S.scene='standby'; S.article.cast=false; S.cast.active=false; S.music.playing=false; S.music.anchor=null;
     LS.removeItem('cds.bound'); LS.removeItem('cds.credential'); LS.removeItem('cds.boundAt'); LS.removeItem('cds.displayBeat');
     // 文案按 reason 分：移出单台是「操作手段」不是「封禁」，措辞不得让老师以为被封了（Jeremyzh 定）
-    $('banner').textContent = (reason==='kicked') ? '已被移出接管，请重新输入控制码' : '控制码已失效，请重新输入';
+    // V2.1.47：三种 reason 必须对应三句可区分的文案（api.md §4.6；甲方定「移出接管是操作手段、不是封禁」）
+    $('banner').textContent = text || (reason==='kicked' ? '已被移出接管，请重新输入控制码'
+      : reason==='unbind' ? '本屏已解除接管，请重新输入控制码'
+      : '控制码已更新，请重新输入');
     $('banner').hidden=false;
     $('content').hidden=true; $('entry').hidden=false; inputs.forEach(function(i){i.value='';});
     sysOff(); setTimeout(function(){ inputs[0].focus(); }, 120);
@@ -1010,13 +1048,19 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   });
 
   // ── 启动 ──
+  LS.removeItem('cds.code');          // 旧版本残留的码副本：启动即清（api.md §4.2，码不得持久化）
   if(LS.getItem('cds.bound')){
     render(); beat();
     syncExitHot();
+    checkBindingServer();                      // 启动即问一次：解绑/换码/被移出不该等到下一轮
   } else {
     $('entry').hidden=false;
     setTimeout(function(){ inputs[0].focus(); }, 200);
   }
+
+  // 轮询**无条件**开着（函数内部自己判 API_BASE / cds.bound）：只挂在「启动时已绑定」那一支上，
+  // 会让「本次开机才绑上的屏」永远收不到撤销（自测抓到的第三处）。
+  setInterval(checkBindingServer, 10000);
 
   // 演示深链：?scene=standby|music|article|cast｜?blank=1（黑屏）（仅原型，便于无需控制台单独看某一态）
   var mScene = /[?&]scene=(standby|music|article|cast)/.exec(location.search);
