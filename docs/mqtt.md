@@ -2,7 +2,7 @@
 
 ## 📋 文档信息
 
-- **版本**: V2.2.36（V2.2 基线 + V2.2.1…V2.2.36 订正，见 §9 变更记录）
+- **版本**: V2.2.37（V2.2 基线 + V2.2.1…V2.2.37 订正，见 §9 变更记录）
 - **更新日期**: 2026-11-18
 - **Broker**: EMQX Cloud
 - **传输**: MQTT 5.0 over WebSocket (WSS)
@@ -316,7 +316,7 @@ cds/v1/d/{deviceId}/bind              服务端 → 显示端           绑定�
 
 | 字段 | 语义 |
 |---|---|
-| `state` | `"bound"` ｜ `"revoked"`。**「从未绑定」的唯一判据＝topic 上没有 retained 消息** **且** **REST 自检（API §4.6 `GET /devices/me`）返回 `unbound`**；两者任一表明已绑定，一律以 DB 为准并由服务端补写快照（§6-2 第 3 条）。**禁止**单凭「无 retained」判未绑定——retained 会因 TTL 过期／broker 丢失／主题发错而不存在，按裸规则判就是一次大规模误踢。解绑时服务端用空 payload 清 retained，不发 `state:"unbound"`——三态会引出「`unbound` 与一条消息都没有有何区别」的二义 |
+| `state` | `"bound"` ｜ `"revoked"`。**判断绑定状态只认 REST 自检（API §4.6 `GET /devices/me`）：返回 `state:"unbound"`（或 `userId` 为 `null`）＝从未绑定**。retained 快照**既非充分也非必要**，不参与判定：①**无 retained 不得单凭判未绑定**——retained 会因 TTL 过期／broker 丢失／主题发错而不存在，按裸规则判就是一次大规模误踢；②**有 retained 而 REST 说 `unbound` ⇒ 仍按未绑定处理**（残留快照／跨事务故障），不得据残留快照订阅 `cmd`、不得据此清或留本地凭据，快照由服务端补写（清）。⚠️ **V2.2.37 订正**：V2.2.26 曾写「无 retained **且** REST `unbound`」——合取式把 REST 从「唯一判据」降成「必要条件」，使「残留快照 + DB 未绑定」成为无解态（既不敢判未绑定、又没有可订阅的 `userId`），且与本文件 §6-2 第 3 条「判据是 REST 结果」互相矛盾。解绑时服务端用空 payload 清 retained，不发 `state:"unbound"`——三态会引出「`unbound` 与一条消息都没有有何区别」的二义 |
 | `userId` | `bound` 时必填：显示端据此订阅 `u/{userId}/cmd`、发布 `state`/`presence`。`revoked` 时为 `null` |
 | `boundAt` / `revokedAt` | 毫秒。`revoked` 时 `boundAt` 保留**最近一次**绑定时刻（供界面显示「本屏曾被绑定」） |
 | `reason` | 仅 `revoked` 时非空：`code_rotated`（控制端刷新控制码 ⇒ 全户踢出）｜ `kicked`（控制端踢出单台）｜ `unbind`（**屏端自解绑**，`api.md` §4.3.1，V2.2.30 起才有生产者）。**只决定提示文案，不得当事件触发器**（见下）。⚠️ **拼写订正（V2.2.30）**：本表原写 `unbound`，而 `api.md` §4.6 的同一字段写 `unbind`——同一字段两个拼写，显示端按快照读 `unbound`、按 REST 读 `unbind`，两张表各查一遍才会发现。统一为 **`unbind`**；`unbound` **只是 `state` 的取值**（且只存在于 `api.md` §4.6，本快照的 `state` 只有 `bound`/`revoked`），不是 `reason` 的取值 |
@@ -653,6 +653,7 @@ cds/v1/d/{deviceId}/bind              服务端 → 显示端           绑定�
 
 ## 9. 变更记录
 
+- **V2.2.37 (2026-11-18)**：**「从未绑定」判据收为 REST 单一判据（推翻 V2.2.26 的合取式）；附记歌词 `N` 的三组实测值（不构成判据）**（产品 22:2x 指出本文件 §4 字段表与其验收「判未绑定只认 REST」措辞不一致；我判定**她那位更宽的口径才对**，本文件跟随。只动本文件，原型仍冻结；零字段／零主题／零 schema 变更）。① **正文 §4 `device.bindState` 字段表**原写「无 retained **且** REST `unbound`」：合取式把 REST 从「唯一判据」降成「必要条件」，于是「残留快照（TTL 过期后又回灌／跨事务故障／同一 `deviceId` 上一任绑定没清干净）+ DB 说未绑定」变成**无解态**——屏既不能判未绑定（缺第一个条件），也没有 `userId` 可订阅，只能无限等一个不知道会不会来的服务端补写。改为 **REST 单一判据**，retained 快照**既非充分也非必要**：无 retained 不得单凭判未绑定（V2.2.24 的误踢事故）；有 retained 而 REST 说 `unbound` ⇒ 仍按未绑定处理、不得订阅 `cmd`、快照由服务端补写。与 §6-2 第 3 条从此同源。② **附记（不构成判据）**：`prototype/display.html` L55 `.lyric{line-height:1.5;padding:.05em 0}` ⇒ 实际步进 `1.6em`（37.44×1.6＝59.9px），1280×713、派生 48px、H=581 时 **N=9**；删 padding 后 1.5 ⇒ 56.16px ⇒ **N=10**；按 §4.6.5 ⑬ 三项改完（删 padding + `line-height:var(--cds-line-height)`＝1.75）⇒ 65.52px ⇒ **N=8**。三个数各对应一种**代码状态**，都不是判据（⑬ 已定 `N` 不作判据）；引用时必须带 `(lineHeight, padding, 字号)` 三元组——「字号 56」若被读成 `--cds-font-size:56`（而 `.lyric` 是它的 `.78` 倍，该值应为 71.8）就会算出 N 差 2–4 行。**未动**：`bindState` 字段集与 `state` 两值、`to`、主题形状、`reason` 枚举、§4.6.1 `L(k)`、§4.6.3 六格表、`pageMap` 七字段、`layout` 五项、`effective` 三值。
 - **V2.2.36 (2026-11-18)**：**⑮ 热区内缩改为「无条件」（零字段／零主题变更）**（Chief 22:15 一：`scrollbar-gutter:stable` 让轨道常驻，内缩不能等滚动条出现）。① §4.6.5 ⑮ 原写「热区本身也应内缩到轨道内侧」，未说何时——若实现成「出现滚动条时再内缩」，同一块屏在无溢出的板书与有溢出的板书上热区位置不同，能按到的区域随内容变化。② 现写死：`scrollbar-gutter:stable`（V2.2.30 ②，防二次重排）使轨道**常驻**，故内缩**无条件**、且以**轨道宽度**为准（不是以「当前是否出现滚动条」为准）；命中轨道不计时、计时期间 `scroll` 即清零两条不变。**未动**：`castOverflow` 字段名与「仅诊断」口径、`device.bindState` 字段表、`reason` 三值、主题形状与 `to`、§4.6 全部算术与六格表。
 - **V2.2.35 (2026-11-18)**：**§4.6.5 新增 ⑯：屏端不得用本地存储「自我确认」绑定**（Chief 22:15 转达其原型层面发现：`display.html` 的输码页是假绑定）。① 绑定态唯一来源＝`POST /devices/bind` 的 `200 + bound:true`，此后以 `GET /devices/me`（§4.6）与 `device.bindState` 快照为准；`localStorage`／`sessionStorage`／`BroadcastChannel`／内存里的码**不构成**依据。② 逐字记录反例：`confirmCode()` 读 `localStorage['cds.consoleCode']` 字符串比对即置 `cds.bound`、全文 `fetch` **0 命中** ⇒ 只在同一浏览器内成立，绕过 `4091`／`4092`／`4094`、4 台上限与审计，且永远拿不到快照（屏与协议两条事实）。③ `BroadcastChannel` 仅限 `prototype/` 演示，不得进实现、不得当验收判据。④ 绑定成功后不得保留控制码副本。**零字段／零主题／零 QoS／零 `pageMap`／零 `layout` 变更**（纯屏端行为约束，同源修正见 `api.md` V2.2.16 §4.2／§8）。
 - **V2.2.34 (2026-11-18)**：**撤销 V2.2.33 的「主题段可为 guest 归属键」＋记「码行消失 ⇒ 屏失效」的落点**（Jeremyzh 22:10 裁决，经 Chief 22:10 转达；零主题／零字段／零 QoS 变更）。① **V2.2.33 作废**：裁决原话「控制端一定需要登录，屏端不需要登录」⇒ 不存在 `g_`+16hex 归属键，`{userId}` **只可能是 `users.username`**；实现不得按「像不像用户名」加校验这件事仍然成立（任何合法用户名都必须能作为主题段）。② **新增引用**：绑定存在而控制码行已消失时，由 `api.md` §4.6（V2.2.15）在 `GET /devices/me` 判 `state:"revoked"`、`reason:"code_rotated"`，服务端**同事务**覆盖 `d/{deviceId}/bind` 快照并清两条 retained——屏端按既有规则（§4 收到 `revoked` 快照 ⇒ 清本地绑定、回输码页）执行，**本文件不需要新增任何字段或消息**。③ 与 V2.2.24/V2.2.26 的关系不变：仍然**不得**用「无 retained」判未绑定，码行是否还在只能由服务端查库决定。**未动**：主题树形状、`to`、`device.bindState` 字段表、`reason` 三值、`state.report`、§4.6 全部算术与六格表。
