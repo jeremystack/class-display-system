@@ -178,7 +178,11 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     BC.postMessage({kind:'styleApplied',
       effective:{fontSizePx:epx, lineHeight:elh, charsPerLine:cplNow(_b)}, note:note||''});
   }
-  try{ applyStyle(JSON.parse(LS.getItem('cds.style')||'null')); }catch(e){}
+  // V2.1.12：**无缓存样式时也要走派生**（字号 = round4(屏高×6.7%)、每行字数 = auto）。
+  // 原写法 applyStyle(null) 在里面直接 return，未收过 display.style 的显示端会停在 CSS 的 72px——
+  // 在 4K 上等于只画到半屏宽（W=3456，72px×24=1728），与 §7.5.3「默认＝派生」不一致。
+  var _st=null; try{ _st=JSON.parse(LS.getItem('cds.style')||'null'); }catch(e){}
+  applyStyle(_st||{});
 
   // ── 心跳（供控制台算"在线终端数"） ──
   function beat(){ if(LS.getItem('cds.bound')) LS.setItem('cds.displayBeat', String(Date.now())); }
@@ -227,8 +231,18 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     var F=parseFloat(document.documentElement.style.getPropertyValue('--cds-font-size'))||72;
     return Math.max(6, Math.min(24, Math.floor((W||1728)/F)));
   }
+  function usableW(body){
+    // V2.1.12：可用宽＝正文块的内容宽。**不能拿 #content.clientWidth**——它含 5vw 左右 padding，
+    // 在 1280 屏会读到 1280（真可用 1152），每行多排 2 字并把行尾裁掉（overflow:hidden 下是静默的）。
+    if(body && body.clientWidth){
+      var cs=getComputedStyle(body);
+      return body.clientWidth - (parseFloat(cs.paddingLeft)||0) - (parseFloat(cs.paddingRight)||0);
+    }
+    // 渲染期 .body 尚未插入：正文块恒为视口宽的 90%（#content 的 5vw×2）
+    return Math.max(240, (window.innerWidth||1280) * 0.9);
+  }
   function cplNow(body){
-    var W=body?body.clientWidth:1728, cap=cplMax(W);
+    var W=usableW(body), cap=cplMax(W);
     if(STYLE_CPL==='auto') return cap;
     var c=parseInt(STYLE_CPL,10); if(!c) return cap;
     return Math.max(6, Math.min(cap, c));
@@ -485,7 +499,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     } else if(S.scene==='article'){
       var a=S.article.items[S.article.idx]||{t:'诗篇 23 章',v:'诗篇',ch:23};
       var vs=VERSES[a.ch]||VERSES[23]; A.verses=vs;
-      var cpl=cplNow(document.getElementById('content'));
+      var cpl=cplNow(null);   // V2.1.12：见 usableW()，#content 的 clientWidth 含 padding
       html='<div class="article"><div class="head"><b>'+esc(a.t)+'</b><span class="seg"></span></div>'+
         '<div class="body"><div class="flow">'+vs.map(function(v){
           var ls=sliceLines(v[1], cpl);
