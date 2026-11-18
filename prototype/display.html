@@ -312,7 +312,11 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   // 断网/5xx 一律不改状态（fail-safe：等下轮或 MQTT），不然一次抖动就把整班屏踢回输码页。
   function checkBindingServer(){
     if(!API_BASE || !LS.getItem('cds.bound')) return;
-    var tok=LS.getItem('cds.deviceToken')||''; if(!tok) return;
+    // V2.1.55 反向闸：bound=1 而 token 缺失是**死态**——本地标志说「已接管」，但 /devices/me 与 MQTT
+    // 都发不出 Authorization，而 beat() 每 1s 照写 displayBeat ⇒ 控制台把它算「在线」。这种「假在线」
+    // 现场最难查（屏停在内容态、函数首行就 return、永远自愈不了）。回输码页。
+    var tok=LS.getItem('cds.deviceToken')||'';
+    if(!tok){ doRevoke('unbind','本机设备凭据已失效，请重新输入控制码'); return; }
     fetch(API_BASE.replace(/\/$/,'')+'/devices/me', {headers:{'Authorization':'Device '+tok}})
       .then(function(r){ return r.json().then(function(j){ return {status:r.status, body:j}; }, function(){ return {status:r.status, body:{}}; }); })
       .then(function(res){
@@ -1019,6 +1023,9 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     LS.removeItem('cds.bound'); LS.removeItem('cds.boundAt'); LS.removeItem('cds.displayBeat');
     // V2.1.43：**不删** cds.deviceToken——release 按协议不撤 token（同一行可被重绑、不产生幽灵设备）。
     // 启动判定必须走 GET /devices/me 的 state（配置了 API 基点时），不得按「本地有 token」进内容页。
+    // V2.1.55 补半句（防误读）：**单向模型**——本地 bound 标志表达「本屏已接管」的**意图**，REST 只能
+    // **降级**（bound→revoked/unbound），不能**升级**（不得把屏拉回内容态）。若照上句把启动改成 REST
+    // 驱动，清码立刻失效：清码后服务端仍 bound，下一轮就被拉回内容态。
     S.scene='standby'; S.article.cast=false; S.cast.active=false; S.music.playing=false;
     $('banner').textContent='本屏已解除接管，请重新输入控制码'; $('banner').hidden=false;
     $('content').hidden=true; $('entry').hidden=false;
@@ -1055,10 +1062,16 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
 
   // ── 启动 ──
   LS.removeItem('cds.code');          // 旧版本残留的码副本：启动即清（api.md §4.2，码不得持久化）
-  if(LS.getItem('cds.bound')){
+  // 演示态（未配 ?api=）没有 deviceToken 概念：绑定只写 cds.bound，故闸只对真机生效，否则刷新即误踢。
+  if(LS.getItem('cds.bound') && (LS.getItem('cds.deviceToken') || !API_BASE)){
     render(); beat();
     syncExitHot();
     checkBindingServer();                      // 启动即问一次：解绑/换码/被移出不该等到下一轮
+  } else if(LS.getItem('cds.bound')){
+    // V2.1.55 反向闸（启动侧）：bound=1 无 token ⇒ 不进内容态。否则会先渲染一帧、beat() 已把
+    // 「假在线」写进 displayBeat，再被轮询踢回——中间那一秒在控制台就是一台假的在线屏。
+    doRevoke('unbind','本机设备凭据已失效，请重新输入控制码');
+    setTimeout(function(){ inputs[0].focus(); }, 200);
   } else {
     $('entry').hidden=false;
     setTimeout(function(){ inputs[0].focus(); }, 200);
