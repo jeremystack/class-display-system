@@ -261,9 +261,13 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   // 真机：presence(retain) + 登记表；原型：同源 localStorage 顶替服务端，控制台读 cds.device。
   function deviceId(){
     try{
+      // V2.1.54 / api.md §4.1：deviceId 只能来自注册响应。注册写过 `cds.deviceId` 就一律用它；
+      // 本地 `dev_` 随机串**只**服务未配 API 基点的演示态——否则真机审计里的设备行与屏上报的 id 对不上。
+      var sid = LS.getItem('cds.deviceId');
+      if(sid) return sid;
       var d = JSON.parse(LS.getItem('cds.device')||'null') || {};
       if(!d.id){
-        d.id = 'dev_'+Math.random().toString(36).slice(2,8);
+        d.id = 'dev_'+Math.random().toString(36).slice(2,8);   // 仅演示态（未配 ?api=）；真机不走到这里
         d.label = '教室屏幕 ' + d.id.slice(-2);
         LS.setItem('cds.device', JSON.stringify(d));
       }
@@ -779,7 +783,8 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     LS.setItem('cds.boundRev', LS.getItem('cds.codeRev')||'');
     LS.setItem('cds.boundAt', String(Date.now()));
     if(info && info.deviceId){ LS.setItem('cds.deviceId', info.deviceId); }
-    if(!LS.getItem('cds.credential')) LS.setItem('cds.credential', 'cred-'+Math.random().toString(36).slice(2,10));
+    // V2.1.54：删掉本地伪造凭据（原 `'cred-'+随机串` 写 `cds.credential`）——该键 1 写 2 删 0 读，
+    // 是 api.md §4.2 ⑧「凭据只能来自注册响应」的旧模型残留。真机凭据只有 `deviceToken`（register 返回）。
     beat();
     entryErr('');
     $('banner').hidden=true;
