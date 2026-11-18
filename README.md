@@ -1,5 +1,7 @@
 # Class Display System
 
+> **在线入口（对外唯一地址）**：https://cds.242500.xyz/prototype/ ——根域名会 0 秒跳转到这里；给老师/二维码一律发这个地址。
+
 教堂 / 教室课堂显示系统：音乐播放与歌词同步、圣经经文人工阅读导航、板书投屏、单控模式设备管理。
 
 - **技术栈**: Preact + TypeScript + Tailwind · Cloudflare Workers · Cloudflare D1 (SQLite) · Cloudflare R2 · EMQX MQTT over WebSocket

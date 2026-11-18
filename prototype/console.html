@@ -53,6 +53,22 @@ h1,h2,h3{margin:0;font-weight:600}
 /* ── 主体 ── */
 .main{flex:1;display:grid;grid-template-columns:340px minmax(0,1fr);gap:16px;padding:16px 20px;min-height:0;overflow:hidden}
 @media (max-width:900px){.main{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) minmax(0,1fr);overflow:auto}.lists{max-height:42vh}}
+/* V2.1.9（P1）：控制端可以是手机。面积小 + 手指粗 → 44px 目标、单列、行距/字号常驻、发送靠按钮不靠手势 */
+@media (pointer:coarse),(max-width:900px){
+  button,.add,ol.items li{min-height:44px}
+  .main{grid-template-columns:1fr;grid-template-rows:auto auto;overflow:auto}
+  .lists{max-height:none}
+  nav.tabs{flex-wrap:wrap}
+  .stage{min-height:50vh}
+  #castText{min-height:36vh;font-size:17px;line-height:1.7}
+  .castbar{gap:10px}
+  .castbar .primary{flex:1 1 100%;min-height:52px;font-size:16px}
+}
+.readbar{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:10px 12px;margin:0 0 10px;border:1px solid var(--border);border-radius:10px;background:#0f131a}
+.readbar label{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
+.readbar input[type=range]{width:160px;height:24px}
+.readbar .rv{color:var(--text);font-variant-numeric:tabular-nums;min-width:4.4em;display:inline-block}
+.readbar .todo{font-size:12px;color:var(--muted)}
 .card{background:var(--raised);border:1px solid var(--border);border-radius:14px;padding:14px;min-height:0;overflow:hidden}
 .panel{display:flex;flex-direction:column;min-height:0}
 .panel h3{font-size:13px;color:var(--muted);text-transform:none;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
@@ -157,7 +173,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       <button role="tab" data-scene="article" aria-selected="false">文章</button>
       <button role="tab" data-scene="cast" aria-selected="false">板书</button>
     </div>
-    <span class="hint">四场景互斥 · 待机为默认 · 切换不刷新 · 切回状态保留 · 文章/板书期间不播放音乐 · 字号按 px（V2.1.5）</span>
+    <span class="hint">四场景互斥 · 待机为默认 · 切换不刷新 · 切回状态保留 · 文章/板书期间不播放音乐 · 字号按 px · 行距可调 · 行数由显示端实测（V2.1.9）</span>
   </nav>
 
   <main class="main">
@@ -193,7 +209,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       </label>
       <label class="field">显示端字号 <span id="sFontVal">72 px</span>
         <input type="range" id="sFontSize" min="24" max="120" step="4" value="72">
-        <span class="hintline" id="sFontEst">≈7 行 / 屏</span>
+        <span class="hintline" id="sFontEst">—（等显示端回报）</span>
       </label>
 
       <label class="field">行高 <span id="sLhVal">1.75</span>
@@ -314,7 +330,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
   }
   function bindCast(){
     var ta=$('castText');
-    if(ta){
+    if(ta && !isCoarse()){
       ta.addEventListener('dblclick', function(e){
         e.preventDefault();
         // preventDefault 不会阻止双击选词，额外把选区收成光标，避免发送瞬间整词高亮
@@ -407,6 +423,9 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     renderNP();
   }
 
+  function isCoarse(){ return !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches); }
+  function measuredLines(){ var r=S.art&&S.art.report; return (r&&r.viewLines)?('实测 '+r.viewLines+' 行 / 屏'):'—（等显示端回报）'; }
+
   // V2.1.2：顶栏常驻音乐状态条。article/cast 下音乐必为 paused（继续置灰，服务端会 409）
   function renderNP(){
     var np=$('np'); if(!np) return;
@@ -481,11 +500,13 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
         '<div class="extra"><span style="color:#8ab4f8">🔊 声音从本机输出</span><span>音量</span><input type="range" min="0" max="100" value="50" id="vol">'+
         '<button class="ghost" style="font-size:12px" data-m="track">切伴奏</button>'+
         '<span class="ro">（进入文章/板书会自动暂停；结束后不自动续播，点「继续」才恢复 —— V2.1.2）</span></div>'+
+        '<div class="ro" id="phoneMute" style="display:'+(isCoarse()?'block':'none')+';margin-top:8px">📱 手机/平板控制页本身<b>不放声</b>：声音只从接了场地音响的那台电脑出（D-A′）。手机上音乐面板置灰不代表坏了。</div>'+
       '</div></div>';
     } else if(S.scene === 'article'){
       var a = S.article.items[S.article.idx] || {v:'诗篇',ch:23,t:'诗篇 23 章'};
       var vs = VERSES[a.ch] || VERSES[23];
       var rp = S.art.report || {}, u = S.article.unit || 'page';
+      var rfpx = Math.max(24, Math.min(120, S.style.fontSizePx||72)), rlh = +(S.style.lineHeight||1.75).toFixed(2);
       // 屏数/节数由显示端实测回报；未回报前显示「—」而不是猜一个数（控制台不算分页）
       var where = (u==='section')
         ? ('节 '+((rp.sectionIndex!=null?rp.sectionIndex+1:'—'))+' / '+(rp.sectionCount||'—'))
@@ -496,6 +517,11 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
         '<div class="verses">'+ vs.map(function(v){ return '<p><span class="sn">'+v[0]+'</span>'+esc(v[1])+'</p>'; }).join('') +'</div>'+
         '<div style="font-size:12px;color:var(--muted);margin:0 0 8px">预览＝<b>内容一致、字号各自</b>（像素一致做不到）；分页/步进由显示端按真实几何实测，本窗不猜。'+
           (rp.viewLines?(' 显示端当前 '+rp.viewLines+' 行/屏。'):'')+'</div>'+
+        '<div class="readbar">'+
+          '<label>字号 <input type="range" id="rFontSize" min="24" max="120" step="4" value="'+rfpx+'"><span class="rv" id="rFontVal">'+rfpx+'px</span></label>'+
+          '<label>行距 <input type="range" id="rLh" min="1.2" max="2.2" step="0.05" value="'+rlh+'"><span class="rv" id="rLhVal">'+rlh.toFixed(2)+'</span></label>'+
+          '<span class="todo">一屏 <b id="rLines">'+(rp.viewLines?(rp.viewLines+' 行（实测）'):'—（等显示端回报）')+'</b> · 行距越小行数越多；改一次即下发，显示端重排</span>'+
+        '</div>'+
         '<div class="castbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
           '<button data-a="unit">'+(u==='section'?'切到「按屏」':'切到「按节」')+'</button>'+
           '<button data-a="prev">'+(u==='section'?'上一节':'上一屏')+'</button>'+
@@ -514,7 +540,9 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
           '</select></label></div>'+
         '<textarea id="castText" placeholder="在这里写板书正文，或选择图片 / PDF…">'+esc(S.cast.draft)+'</textarea>'+
         '<div class="castbar">'+
-          '<span style="margin-right:auto;color:var(--muted);font-size:12px">双击文本框 ＝ 发送<b>光标所在行及上方 N 行</b>；发送后 3 秒内可撤销</span>'+
+          '<span style="margin-right:auto;color:var(--muted);font-size:12px">'+(isCoarse()
+            ? '点右侧「发送」按钮 ＝ 发送<b>光标所在行及上方 N 行</b>（触屏不绑双击、不绑长按：双击会缩放/选词）'
+            : '双击文本框 ＝ 发送<b>光标所在行及上方 N 行</b>；发送后 3 秒内可撤销')+'</span>'+
           '<button class="ghost" id="castPick">选择图片 / PDF</button>'+
           (S.cast.active?'<button class="ghost" id="castToggle">结束板书</button>':'')+
           '<button class="primary" id="castSend">'+(S.cast.active?'重发（原地替换）':'投出到教室屏幕')+'</button>'+
@@ -709,23 +737,36 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     };
     $('sFontVal').textContent = fpx + ' px';
     $('sLhVal').textContent = S.style.lineHeight.toFixed(2);
-    // 可用高 972px（1080 − 上下 5vh×2）；给老师一个「一屏几行」的数，代替做不到的像素级所见即所得
-    var est = Math.max(1, Math.floor(972/(fpx*S.style.lineHeight)));
-    var e=$('sFontEst'); if(e) e.textContent='≈'+est+' 行 / 屏';
+    // V2.1.9：行数**只认 display 上报的 pageMap.viewLines**。
+    // 这里曾用固定常数当可用高再除以 (fpx*行高)：那个常数≠.body.clientHeight(≈911)，且公式不含段距(0.63 行/节)，
+    // 72px 给 7 行而真实 5 行；行距成了用户可调项后，任何本地公式都会立刻过期。
+    var e=$('sFontEst'); if(e) e.textContent = measuredLines();
     var sm=$('styleSummary'); if(sm) sm.textContent=($('sFont').selectedOptions[0]||{}).textContent+' · '+fpx+'px · 行高 '+S.style.lineHeight.toFixed(2);
     return S.style;
   }
   ['sFont','sFontSize','sLh','sAlign','sFg','sBg'].forEach(function(id){
     $(id).addEventListener('input', function(){ readStyle(); $('styleState').textContent='未下发（有改动）'; });
   });
-  $('pushStyle').addEventListener('click', function(){
+  function publishStyle(noRender){
     var st = readStyle(); st.styleVersion = Date.now();
     st.fontStack = map[st.fontFamily.body] || 'system-ui,sans-serif';
     LS.setItem('cds.style', JSON.stringify(st));
     send({kind:'style', style:st});
-    $('styleState').textContent = '已下发 v'+String(st.styleVersion).slice(-4)+' · 等待回执';
-    setTimeout(function(){ $('styleState').textContent='已生效（显示端 '+S.termOnline+' 台）'; }, 600);
-    render();
+    var ss=$('styleState'); if(ss) ss.textContent = '已下发 v'+String(st.styleVersion).slice(-4)+' · 等待回执';
+    setTimeout(function(){ var e2=$('styleState'); if(e2) e2.textContent='已生效（显示端 '+S.termOnline+' 台）'; }, 600);
+    if(!noRender) render();
+  }
+  $('pushStyle').addEventListener('click', function(){ publishStyle(false); });
+
+  // V2.1.9：阅读场景常驻的字号/行距（与「显示样式」面板同一状态，改一次即下发）
+  document.addEventListener('input', function(ev){
+    var id = ev.target && ev.target.id;
+    if(id !== 'rFontSize' && id !== 'rLh') return;
+    if(id === 'rFontSize'){ $('sFontSize').value = ev.target.value; var f=$('rFontVal'); if(f) f.textContent = ev.target.value+'px'; }
+    else { $('sLh').value = ev.target.value; var l=$('rLhVal'); if(l) l.textContent = (+ev.target.value).toFixed(2); }
+    // 拖滑块时不要整块 render（会重建 DOM、滑块失去焦点）
+    publishStyle(true);
+    var sp=$('styleDetails'); if(sp) sp.open = false;
   });
 
   // ── 显示端回执 ──
@@ -742,10 +783,14 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     // V2.1.6：显示端 pageMap 摘要（6 标量）与板书实际字号
     if(d.kind==='pageMap'){
       S.art.report = d;
+      var est=$('sFontEst'); if(est) est.textContent = measuredLines();
+      var rln=$('rLines'); if(rln) rln.textContent = d.viewLines ? (d.viewLines+' 行（实测）') : '—（等显示端回报）';
       if(typeof d.unit==='string') S.article.unit=d.unit;
       if(typeof d.pageIndex==='number') S.article.page=d.pageIndex;
       if(typeof d.effectivePx==='number') toast('整章一屏：实际字号 '+d.effectivePx+'px（步长 4）');
-      if(S.scene==='article') render();
+      // V2.1.9：正在拖字号/行距滑块时不整块重绘（重建 DOM 会让滑块丢焦点、拖一下就断）
+      var dragging = document.activeElement && document.activeElement.type==='range';
+      if(S.scene==='article' && !dragging) render();
     }
     if(d.kind==='castMetrics'){ S.cast.effPx=d.effectivePx; S.cast.setPx=d.settingPx; if(S.scene==='cast') render(); }
   };
