@@ -259,7 +259,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       { t:'奇异恩典', m:'3:42', dur:222000, track:'accompaniment' },
       { t:'靠近主', m:'5:10', dur:310000, track:'main' }
     ]},
-    art: { report: null },                                  // V2.1.6：显示端 pageMap 摘要回执
+    art: { report: null, eff: null, anchor: null },   // eff＝显示端回报的生效三值                                  // V2.1.6：显示端 pageMap 摘要回执
     article: { idx: 0, page: 0, unit: 'page', cast: false, items: [
       { t:'诗篇 23 章', v:'诗篇', ch:23 },
       { t:'约伯记 3 章', v:'约伯记', ch:3 }
@@ -434,9 +434,14 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
 
   function isCoarse(){ return !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches); }
   function measuredLines(){ var r=S.art&&S.art.report; return (r&&r.viewLines)?('首屏 '+r.viewLines+' 行'):'—（等显示端回报）'; }
-  // V2.1.11：有效上限 = min(24 可读性底线, floor(1728÷字号))；24 不是技术限制（24px 下 floor 可达 72），
-  // 是一行超过 24 个全角字后排跟行会跳字
-  function cMax(fpx){ var f=+fpx; if(!f) f=72; return Math.max(6, Math.min(24, Math.floor(1728/Math.max(24,Math.min(160,f))))); }
+  // V2.1.11：有效上限 = min(24 可读性底线, floor(可用宽÷字号))；24 不是技术限制（24px 下 floor 可达 72），
+  // 是一行超过 24 个全角字后排跟行会跳字。
+  // V2.1.12：可用宽**取显示端实测**（layoutMetrics.availW）。写死 1728 会在 1280/1640 屏上算出过大的上限：
+  // 1280 屏可用宽≈1152，真上限 18，控制台却给出 24 —— 锁了 24 被显示端静默收紧回 18，等于没锁上。
+  var AVL_W=null, AVL_H=null;                              // 显示端实测；未连接时为 null
+  function availW(){ return AVL_W||1728; }
+  function cMax(fpx){ var f=+fpx; if(!f) f=72; return Math.max(6, Math.min(24, Math.floor(availW()/Math.max(24,Math.min(160,f))))); }
+  function cMaxSrc(){ return AVL_W ? ('显示端实测 '+AVL_W+'px') : '未连接，按 1920 屏估算 1728px'; }
   function cplOf(){ return (S.style.charsPerLine==='auto'||!S.style.charsPerLine) ? cMax(cNom()) : Math.min(cMax(cNom()), +S.style.charsPerLine); }
   function cplLabel(){ return (S.style.charsPerLine==='auto'||!S.style.charsPerLine) ? ('自动 '+cplOf()+' 字') : (cplOf()+' 字'); }
   function cNom(){ var v=S.style.fontSizePx; return (v==='auto'||!v) ? 72 : +v; }
@@ -536,8 +541,9 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
           '<label>字号 <input type="range" id="rFontSize" min="24" max="160" step="4" value="'+rfpx+'"><span class="rv" id="rFontVal">'+(S.style.fontSizePx==='auto'?'自动':rfpx+'px')+'</span></label>'+
           '<label>行距 <input type="range" id="rLh" min="1.2" max="2.2" step="0.05" value="'+rlh+'"><span class="rv" id="rLhVal">'+rlh.toFixed(2)+'</span></label>'+
           '<label title="每行几个字；默认 auto（按显示端屏宽÷字号），上限 24 是可读性底线">每行 <input type="range" id="rChars" min="6" max="'+cMax(rfpx)+'" step="1" value="'+cplOf()+'" data-cmax="'+cMax(rfpx)+'"><span class="rv" id="rCharsVal">'+cplLabel()+'</span>'+
-            '<em class="ro" id="rCharsMax" style="font-size:11px">上限 '+cMax(rfpx)+' 字</em></label>'+
-          '<span class="todo"><b id="rLines">'+(rp.viewLines?('首屏 '+rp.viewLines+' 行'):'—（等显示端回报）')+'</b> · 每行 '+cplLabel()+' · 改一次即下发，显示端重排重发</span>'+
+            '<em class="ro" id="rCharsMax" style="font-size:11px" title="'+cMaxSrc()+'">上限 '+cMax(rfpx)+' 字</em></label>'+
+          '<span class="todo"><b id="rLines">'+(rp.viewLines?('首屏 '+rp.viewLines+' 行'):'—（等显示端回报）')+'</b> · 每行 '+cplLabel()+' · 改一次即下发，显示端重排重发'+
+            (S.art.eff?(' · <b>生效</b> 行距 '+S.art.eff.lineHeight.toFixed(2)+' / 字号 '+Math.round(S.art.eff.fontSizePx)+'px / 每行 '+S.art.eff.charsPerLine+' 字'):'')+'</span>'+
         '</div>'+
         '<div class="castbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
           '<button data-a="unit">'+(u==='section'?'切到「按屏」':'切到「按节」')+'</button>'+
@@ -813,6 +819,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     // V2.1.6：显示端 pageMap 摘要（6 标量）与板书实际字号
     if(d.kind==='pageMap'){
       S.art.report = d;
+      if(d.anchor) S.art.anchor = d.anchor;                 // {verseSn, charOffset}：协议的位置摘要
       var est=$('sFontEst'); if(est) est.textContent = measuredLines();
       var rln=$('rLines'); if(rln) rln.textContent = d.viewLines ? ('首屏 '+d.viewLines+' 行') : '—（等显示端回报）';
       if(typeof d.charsPerLine==='number') S.art.effCpl=d.charsPerLine;   // 显示端回报派生结果，不覆盖本机 auto 开关
@@ -823,11 +830,25 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       var dragging = document.activeElement && document.activeElement.type==='range';
       if(S.scene==='article' && !dragging) render();
     }
+    if(d.kind==='layoutMetrics'){
+      // 显示端实测几何：可用宽变了，控制台的「每行上限」当场跟着变（屏不同上限不同）
+      var wChanged = (AVL_W!==d.availW);
+      AVL_W=d.availW; AVL_H=d.availH;
+      var rc2=$('rChars'), mx2=cMax(cNom());
+      if(wChanged && rc2 && +rc2.max!==mx2){ rc2.max=mx2; rc2.setAttribute('data-cmax',mx2);
+        if(+rc2.value>mx2) rc2.value=mx2;
+        var rcm=$('rCharsMax'); if(rcm) rcm.textContent='上限 '+mx2+' 字';
+        var rcv=$('rCharsVal'); if(rcv && (S.style.charsPerLine==='auto'||!S.style.charsPerLine)) rcv.textContent='自动 '+mx2+' 字';
+      }
+    }
     if(d.kind==='styleApplied'){
       var e=d.effective||{};
       // 显示端回报的是**派生结果**，不能覆盖本机的 auto 开关（否则下一次下发就把 auto 锁成数字）
       if(typeof e.charsPerLine==='number'){ S.art.effCpl=e.charsPerLine; var _rcv=$('rCharsVal'); if(_rcv && (S.style.charsPerLine==='auto'||!S.style.charsPerLine)) _rcv.textContent='自动 '+e.charsPerLine+' 字'; }
+      if(typeof e.fontSizePx==='number' && typeof e.lineHeight==='number') S.art.eff=e;
       if(d.note) toast(d.note);
+      var _drag = document.activeElement && document.activeElement.type==='range';
+      if(S.scene==='article' && !_drag) render();
     }
     if(d.kind==='castMetrics'){ S.cast.effPx=d.effectivePx; S.cast.setPx=d.settingPx; if(S.scene==='cast') render(); }
   };

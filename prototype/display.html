@@ -145,6 +145,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   // ── 样式（本地缓存优先，避免闪字） ──
   // V2.1.11：每行字数默认 auto（按屏宽 ÷ 字号派生）；手动档只在老师拖过滑块后生效
   var STYLE_CPL='auto';
+  var WARN_SCALE=false;
   function applyStyle(st){
     if(!st) return;
     var r=document.documentElement.style;
@@ -152,12 +153,13 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
       var map={song:'"Songti SC","Noto Serif SC",serif',hei:'"PingFang SC","Microsoft YaHei",sans-serif',kai:'"Kaiti SC",KaiTi,serif','system-ui':'system-ui,sans-serif'};
       r.setProperty('--cds-font-body', map[st.fontFamily.body]||st.fontStack||'system-ui,sans-serif');
     }
-    // V2.1.5：字号以 px 为准（24–120）。旧字段 fontScale 只作兼容：×18 折算 px。
-    var fpx = (st.fontSizePx && st.fontSizePx!=='auto') ? +st.fontSizePx : (st.fontScale ? Math.round(st.fontScale * 18) : null);
+    // V2.2.13：fontScale **作废**——收到忽略并在 ack.note 里 warn。
+    // 旧实现按 ×18 折算 px，fontScale:1.0 会得 18px（字直接小到墙脚），已删。
+    if(st.fontScale!=null) WARN_SCALE=true;
+    var fpx = (st.fontSizePx && st.fontSizePx!=='auto') ? +st.fontSizePx : null;
     // V2.1.11：缺省／auto ⇒ 按本机屏高派生 round4(H×6.7%)（720p 48 / 1080p 72 / 1440p 96 / 2160p 144）
     if(!fpx){ var _h=window.innerHeight||1080; fpx=Math.max(24, Math.min(160, Math.round(_h*0.067/4)*4)); }
     if(fpx) r.setProperty('--cds-font-size', Math.max(24, Math.min(160, fpx)) + 'px');
-    if(st.fontScale) r.setProperty('--cds-font-scale', st.fontScale);
     if(st.lineHeight) r.setProperty('--cds-line-height', st.lineHeight);
     if(st.fg){ r.setProperty('--cds-fg', st.fg); }
     if(st.bg){ r.setProperty('--cds-bg', st.bg); }
@@ -256,6 +258,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     A.ready=true;
     verifyModel(flow);                    // DOM 只校验，不覆盖
     applyView(silent);
+    postMetrics();                        // 实测 W/H/生效三值 → 控制台的「每行上限」按这个算
   }
 
   // 装页：整节下移（唯一规则）；某节自身超一屏才在节内切（页脚标「续」）
@@ -335,10 +338,56 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     if(seg) seg.textContent = A.unit==='section'
       ? ('第 '+(A.sectionIndex+1)+' / '+A.sectionCount+' 节')
       : ('第 '+(A.pageIndex+1)+' / '+A.pageCount+' 屏 · 全篇 '+A.totalLines+' 行');
-    if(!silent && BC) BC.postMessage({kind:'pageMap', idx:S.article.idx, unit:A.unit,
+    if(!silent) postPageMap();
+  }
+
+  // mqtt §4.4：`anchor`＝视口起点所在经节与节内字符偏移。行号只在本机内部用，不上行。
+  function anchorAt(line){
+    var k=sectionOfLine(line), vs=A.verses||[];
+    var li=Math.max(0, line-(A.verseLineIndex[k]||0));
+    var txt=(vs[k]&&vs[k][1])||'', cpl=cplNow(artBody())||12;
+    var off=0, acc=0, n=0;
+    while(off<txt.length && n<li){
+      var w=charW(txt.charAt(off));
+      if(acc+w>cpl+1e-9){ n++; acc=0; continue; }
+      acc+=w; off++;
+    }
+    return {verseSn:(vs[k]?+vs[k][0]:(k+1)), charOffset:off};
+  }
+  function postPageMap(){
+    if(!BC || !A.ready) return;
+    var startLine=(A.unit==='section') ? (A.verseLineIndex[A.sectionIndex]||0) : (A.pageStarts[A.pageIndex]||0);
+    BC.postMessage({kind:'pageMap', anchor:anchorAt(startLine), unit:A.unit,
       pageIndex:A.pageIndex, pageCount:A.pageCount, sectionIndex:A.sectionIndex,
       sectionCount:A.sectionCount, viewLines:A.viewLines});   // 恒 7 字段：totalLines / charsPerLine 都不上行
   }
+  // 显示端实测几何（原型内部消息，不进 MQTT 协议）：控制台的「每行上限」必须按这个算，
+  // 否则 1280 屏可用宽 1152（真上限 18）会按 1728 算出 24，锁了 24 被显示端静默收紧回 18。
+  var _mt=null;
+  function postMetrics(){
+    if(!BC || !A.ready) return;
+    clearTimeout(_mt);
+    _mt=setTimeout(function(){
+      var b=artBody(); if(!b||!BC) return;
+      var cs=getComputedStyle(b);
+      BC.postMessage({kind:'layoutMetrics', availW:b.clientWidth, availH:b.clientHeight,
+        fontSizePx:parseFloat(cs.fontSize)||72, lineHeight:parseFloat(cs.lineHeight)||0,
+        charsPerLine:cplNow(b)});
+    }, 120);
+  }
+
+  // mqtt §4.6：W/H 或三参任一变化 ⇒ 重测 → 重算 → **重发 pageMap**（auto 下 pageCount 随屏变）
+  function relayoutArticle(){ if(S.scene!=='article'||!A.ready) return; layoutArticle(); }
+  (function watchGeometry(){
+    function kick(){ clearTimeout(window._rz); window._rz=setTimeout(relayoutArticle,200); }
+    if(window.ResizeObserver){
+      var ro=new ResizeObserver(kick);
+      var host=document.getElementById('content'); if(host) ro.observe(host);
+    }
+    window.addEventListener('resize', kick);              // 兜底：老浏览器 / 旋屏
+    window.addEventListener('orientationchange', kick);
+    if(document.fonts && document.fonts.ready) document.fonts.ready.then(relayoutArticle);  // 字体落地后行宽会变
+  })();
 
   function stepArticle(dir, steps){
     if(!A.ready) return;
@@ -365,21 +414,49 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     applyView();                      // 切 unit 不重发 pageMap：pageCount / sectionCount 恒报、不跳数
   }
 
+  // 「整章一屏」＝逐级降档到 pageCount==1。顺序（Jeremyzh 12:43）：
+  //   ① 先降行距 1.75→1.2（步长 0.05，最省字号）→ ② 再把每行字数抬到当前上限 →
+  //   ③ 最后才降字号（步长 4、下限 24）。
+  // 三档都试完仍多屏 ⇒ 全部回滚并如实报「到最小仍 N 屏」，不留半套样式。
   function fitOnePage(){
-    var content=document.getElementById('content');
-    var px=parseFloat(document.documentElement.style.getPropertyValue('--cds-font-size'))||72;
-    for(var i=0;i<40;i++){
-      content.style.setProperty('--cds-font-size', px+'px');
-      layoutArticle(true);
-      if(A.pageCount<=1) break;
-      px-=4; if(px<24){ px=24; break; }                    // 步长 4，不静默跨档
+    var root=document.documentElement.style;
+    var F0=parseFloat(root.getPropertyValue('--cds-font-size'))||72;
+    var LH0=parseFloat(root.getPropertyValue('--cds-line-height'))||1.75;
+    var CP0=STYLE_CPL, changed=[], done=false;
+    layoutArticle(true);
+    if(A.pageCount<=1){ postPageMap(); sendStyleApplied('整章一屏：已是一屏，未动样式'); return; }
+    function fits(){ layoutArticle(true); return A.pageCount<=1; }
+    // ① 行距
+    var lh=+LH0.toFixed(2);
+    while(!done && lh>1.2+1e-9){
+      lh=+Math.max(1.2, lh-0.05).toFixed(2);
+      root.setProperty('--cds-line-height', lh);
+      if(fits()){ changed.push('行距 '+LH0.toFixed(2)+'→'+lh.toFixed(2)); done=true; }
     }
-    content.style.setProperty('--cds-font-size', px+'px'); layoutArticle(true);
-    if(BC) BC.postMessage({kind:'pageMap', idx:S.article.idx, unit:A.unit,
-      pageIndex:A.pageIndex, pageCount:A.pageCount, sectionIndex:A.sectionIndex,
-      sectionCount:A.sectionCount, viewLines:A.viewLines, charsPerLine:STYLE_CPL});
-    sendStyleApplied('整章一屏：实际字号 '+px+'px（步长 4）');   // effective 只走 styleApplied，不进 pageMap
-    sys('整章一屏：实际字号 '+px+'px（按步长 4 下调）', false, 3200);
+    // ② 每行字数（auto 本就在上限，只有老师锁低了才有作用）
+    if(!done){
+      var b=artBody(), cap=cplMax(b?b.clientWidth:1728);
+      if(cplNow(b)<cap){ STYLE_CPL=cap; if(fits()){ changed.push('每行 '+CP0+'→'+cap+' 字'); done=true; } }
+    }
+    // ③ 字号
+    var px=F0;
+    while(!done && px>24){
+      px=Math.max(24, px-4);
+      root.setProperty('--cds-font-size', px+'px');
+      if(fits()){ changed.push('字号 '+F0+'→'+px+'px'); done=true; }
+    }
+    if(!done){                                              // 回滚：宁可不动，也不留半套
+      root.setProperty('--cds-line-height', LH0);
+      root.setProperty('--cds-font-size', F0+'px');
+      STYLE_CPL=CP0; layoutArticle(true);
+      postPageMap(); sendStyleApplied('整章一屏：已到最小（行距 1.2 / 字号 24）仍 '+A.pageCount+' 屏，未改样式');
+      sys('整章一屏：已到最小仍 '+A.pageCount+' 屏，样式已还原', false, 3600);
+      return;
+    }
+    var note='整章一屏：'+changed.join('、');
+    postPageMap();
+    sendStyleApplied(note);                                 // effective 三值只走 styleApplied，不进 pageMap
+    sys(note, false, 3600);
   }
 
 
@@ -407,7 +484,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
         '<div class="progress"><i id="pbar" style="width:'+Math.min(100,(S.music.pos/it.dur)*100).toFixed(1)+'%"></i></div>';
     } else if(S.scene==='article'){
       var a=S.article.items[S.article.idx]||{t:'诗篇 23 章',v:'诗篇',ch:23};
-      var vs=VERSES[a.ch]||VERSES[23];
+      var vs=VERSES[a.ch]||VERSES[23]; A.verses=vs;
       var cpl=cplNow(document.getElementById('content'));
       html='<div class="article"><div class="head"><b>'+esc(a.t)+'</b><span class="seg"></span></div>'+
         '<div class="body"><div class="flow">'+vs.map(function(v){
