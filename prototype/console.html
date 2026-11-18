@@ -237,7 +237,8 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       { t:'奇异恩典', m:'3:42', dur:222000, track:'accompaniment' },
       { t:'靠近主', m:'5:10', dur:310000, track:'main' }
     ]},
-    article: { idx: 0, page: 0, cast: false, items: [
+    art: { report: null },                                  // V2.1.6：显示端 pageMap 摘要回执
+    article: { idx: 0, page: 0, unit: 'page', cast: false, items: [
       { t:'诗篇 23 章', v:'诗篇', ch:23 },
       { t:'约伯记 3 章', v:'约伯记', ch:3 }
     ]},
@@ -484,20 +485,29 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     } else if(S.scene === 'article'){
       var a = S.article.items[S.article.idx] || {v:'诗篇',ch:23,t:'诗篇 23 章'};
       var vs = VERSES[a.ch] || VERSES[23];
-      var start = S.article.page * 3, slice = vs.slice(start, start+3);
+      var rp = S.art.report || {}, u = S.article.unit || 'page';
+      // 屏数/节数由显示端实测回报；未回报前显示「—」而不是猜一个数（控制台不算分页）
+      var where = (u==='section')
+        ? ('节 '+((rp.sectionIndex!=null?rp.sectionIndex+1:'—'))+' / '+(rp.sectionCount||'—'))
+        : ('第 '+((rp.pageIndex!=null?rp.pageIndex+1:'—'))+' / '+(rp.pageCount||'—')+' 屏');
       html = '<div class="stage"><div class="article" style="font-size:'+(17*S.cf).toFixed(1)+'px;line-height:'+S.style.lineHeight+';text-align:'+S.style.align+'">'+
         '<div class="head"><b>'+esc(a.t)+'</b><span>预选第 '+(S.article.idx+1)+' 条</span>'+
-          '<span style="margin-left:auto">第 '+(S.article.page+1)+' 屏'+(S.article.cast?'':' · 学生看不到（未上屏）')+'</span></div>'+
-        '<div class="verses">'+ slice.map(function(v){ return '<p><span class="sn">'+v[0]+'</span>'+esc(v[1])+'</p>'; }).join('') +'</div>'+
+          '<span style="margin-left:auto">'+where+(S.article.cast?'':' · 学生看不到（未上屏）')+'</span></div>'+
+        '<div class="verses">'+ vs.map(function(v){ return '<p><span class="sn">'+v[0]+'</span>'+esc(v[1])+'</p>'; }).join('') +'</div>'+
+        '<div style="font-size:12px;color:var(--muted);margin:0 0 8px">预览＝<b>内容一致、字号各自</b>（像素一致做不到）；分页/步进由显示端按真实几何实测，本窗不猜。'+
+          (rp.viewLines?(' 显示端当前 '+rp.viewLines+' 行/屏。'):'')+'</div>'+
         '<div class="castbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
-          '<button data-a="prev">上一屏</button><button data-a="next">下一屏</button>'+
+          '<button data-a="unit">'+(u==='section'?'切到「按屏」':'切到「按节」')+'</button>'+
+          '<button data-a="prev">'+(u==='section'?'上一章':'上一屏')+'</button>'+
+          '<button data-a="next">'+(u==='section'?'下一章':'下一屏')+'</button>'+
+          '<button data-a="fit" title="按步长 4 降字号直到整章 1 屏；默认不动字号">整章一屏</button>'+
           '<button class="'+(S.article.cast?'':'primary')+'" data-a="present">'+(S.article.cast?'结束投屏':'开始投屏')+'</button>'+
-          '<span style="margin-left:auto;font-size:12px;color:var(--muted)">'+(S.article.cast?'● 已上屏 · 第 '+(S.article.page+1)+' 屏':'○ 预览中 · 尚未上屏')+'</span>'+
+          '<span style="margin-left:auto;font-size:12px;color:var(--muted)">'+(S.article.cast?'● 已上屏':'○ 预览中 · 尚未上屏')+'</span>'+
         '</div>'+
       '</div></div>';
     } else {
       html = '<div class="stage stage-cast"><div class="castbox">'+
-        '<div class="casthead"><b>板书</b><span>独占全屏 · 满高编辑区</span>'+
+        '<div class="casthead"><b>板书</b><span>独占全屏 · 满高编辑区'+(S.cast.effPx?(' · <b style="color:#ffd9a0">实际字号 '+S.cast.effPx+'px</b>'+(S.cast.setPx&&S.cast.setPx!==S.cast.effPx?('（设定 '+S.cast.setPx+'px，已按步长 4 降档）'):'')):'')+'</span>'+
           '<label style="margin-left:auto">发送行数 <select id="castLines">'+
             [['3','3 行'],['5','5 行'],['8','8 行'],['10','10 行'],['all','全部']].map(function(o){
               return '<option value="'+o[0]+'"'+(String(S.cast.lines)===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+
@@ -598,16 +608,20 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       render(); return;
     }
     if(a){
-      var k2=a.dataset.a;
-      if(k2==='next'){ S.article.page++; }
-      if(k2==='prev'){ S.article.page=Math.max(0,S.article.page-1); }
+      var k2=a.dataset.a, uu=S.article.unit||'page';
+      if(k2==='unit'){ S.article.unit = (uu==='section'?'page':'section'); send({kind:'articleUnit', unit:S.article.unit}); render(); return; }
+      if(k2==='fit'){ send({kind:'fitOnePage'}); toast('已请求「整章一屏」：屏幕端按步长 4 降字号，实际值会回报'); return; }
+      if(k2==='next' || k2==='prev'){
+        send({kind:'scroll', direction:k2, unit:uu, steps:1});
+        // 页码/节号等显示端回执（pageMap 摘要），控制台不自己算
+        render(); return;
+      }
       if(k2==='present'){
         S.article.cast = !S.article.cast;
-        if(S.article.cast){ S.scene='article'; send({kind:'scene',scene:'article'}); send({kind:'article',idx:S.article.idx,page:S.article.page,cast:true}); toast('已投出到教室屏幕'); }
+        if(S.article.cast){ S.scene='article'; send({kind:'scene',scene:'article'}); send({kind:'article',idx:S.article.idx,page:S.article.page,unit:S.article.unit,cast:true}); toast('已投出到教室屏幕'); }
         else { S.scene='standby'; send({kind:'scene',scene:'standby'}); toast('已结束投屏：屏幕回待机'); }
         render(); return;
       }
-      if(S.article.cast) send({kind:'article', idx:S.article.idx, page:S.article.page, cast:true});
       render(); return;
     }
     var sb=e.target.closest('button[data-sb]');
@@ -725,6 +739,15 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     }
     // V2.1：显示端无音频，audioBlocked 已删除
     if(d.kind==='standby'){ S.standby.mode=d.mode||'theme'; if(S.scene==='standby') render(); }
+    // V2.1.6：显示端 pageMap 摘要（6 标量）与板书实际字号
+    if(d.kind==='pageMap'){
+      S.art.report = d;
+      if(typeof d.unit==='string') S.article.unit=d.unit;
+      if(typeof d.pageIndex==='number') S.article.page=d.pageIndex;
+      if(typeof d.effectivePx==='number') toast('整章一屏：实际字号 '+d.effectivePx+'px（步长 4）');
+      if(S.scene==='article') render();
+    }
+    if(d.kind==='castMetrics'){ S.cast.effPx=d.effectivePx; S.cast.setPx=d.settingPx; if(S.scene==='cast') render(); }
   };
 
   // ── 初始化 ──
