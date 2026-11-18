@@ -148,17 +148,30 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
 .toast.err{border-color:#7f2a2a;background:#2a1717}
 @keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .ro{color:var(--muted)}
+  /* V2.1.26：已接管屏幕面板（B3 反转：可点开、可单台移出） */
+  .devPanel{position:fixed;right:16px;top:58px;z-index:60;width:min(560px,92vw);background:#151a23;
+    border:1px solid #3a4356;border-radius:10px;padding:10px 12px;box-shadow:0 12px 32px rgba(0,0,0,.5);font-size:12px}
+  .devPanel[hidden]{display:none}
+  .devHead{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .devHead b{color:#dde3ec}
+  .devRow{display:flex;align-items:center;gap:8px;padding:6px 4px;border-top:1px solid #232a35}
+  .devRow .dot{width:8px;height:8px;border-radius:50%;background:#4ade80;flex:none}
+  .devRow .dot.off{background:#6b7280}
+  .devName{color:#dde3ec}
+  .devId,.devScene{color:#8b97a8;font-family:ui-monospace,monospace}
+  .devKick{margin-left:auto;background:transparent;border:1px solid #7a3b3b;color:#ffb4b4;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:12px}
+  .devEmpty{color:#8b97a8;padding:8px 4px}
 </style>
 </head>
 <body>
 <div class="app">
   <header class="top">
     <div class="brand">CDS<small>教室显示 · 控制台</small></div>
-    <div class="count zero" id="count" title="只读指示，不可点击"><span class="dot"></span><span id="countText">当前 0 个终端在线</span></div>
+    <div class="count zero" id="count" role="button" tabindex="0" title="点击查看已接管的屏幕（可单台移出）"><span class="dot"></span><span id="countText">当前 0 个终端在线</span></div>
     <div id="np" style="display:none;align-items:center;gap:8px;padding:4px 10px;border:1px solid #3a4356;border-radius:8px;font-size:12px;color:#cfd8e6"><span style="color:#8ab4f8">♪</span><span id="npTxt">—</span><button id="npResume" style="font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid #3a4356;background:transparent;color:#cfd8e6;cursor:pointer">继续</button><button id="npStop" style="font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid #3a4356;background:transparent;color:#cfd8e6;cursor:pointer">停止</button></div>
     <div class="code">
-      <span class="label">控制码</span><b id="codeText">482 913</b><span class="meta" id="codeMeta">剩 15:00</span>
-      <button id="refreshCode" title="刷新控制码＝重置接管：旧码作废，已绑屏幕全部回输码态">⟳</button>
+      <span class="label">控制码</span><b id="codeText">4829 1370</b><span class="meta" id="codeMeta">长期有效 · 可手动更新</span>
+      <button id="refreshCode" title="更新控制码＝重置接管：旧码失效，已接管的屏幕全部回输码页">⟳</button>
       <button id="unbindAll" class="ghost" title="全部解绑：所有终端回到输码页" style="font-size:12px">全部解绑</button>
     </div>
     <a class="ghost" href="screen.html" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);font-size:12px" title="显控一体：这台电脑 + HDMI 复制到投影">🖥 单屏模式</a>
@@ -171,6 +184,12 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     </div>
     <div class="conn"><span class="dot"></span>已连接</div>
   </header>
+
+  <div class="devPanel" id="devPanel" hidden>
+    <div class="devHead"><b>已接管的屏幕</b><span class="ro">「移出接管」只撤这一台，不封禁、可立即用同一张码重接</span>
+      <button id="devClose" class="ghost" style="margin-left:auto;font-size:12px">收起</button></div>
+    <div id="devRows"></div>
+  </div>
 
   <nav class="tabs">
     <div class="seg" role="tablist">
@@ -250,7 +269,8 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
 
   // ── 状态 ──
   var S = {
-    codeObj: { code:'482913', exp: Date.now()+15*60*1000, used:false },
+    codeObj: { code:'48291370' },   // CO-2026-11-18-05：每用户一张、存库、长期有效（无 TTL / 无 used）
+    devices: [],                    // 已接管屏幕（真机来自登记表 + presence；原型用 localStorage）
     scene: 'standby',
     standby: { mode:'theme' },
     termOnline: 0,
@@ -277,9 +297,9 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     S.cast.draft = LS.getItem('cds.castDraft') || '';
     var cl = LS.getItem('cds.castLines'); if(cl) S.cast.lines = (cl==='all' ? 'all' : +cl);
     var cc = LS.getItem('cds.castId'); if(cc) S.cast.castId = cc;
-    var co = JSON.parse(LS.getItem('cds.codeObj')||'null');
-    if(co) S.codeObj = co;
-    else { var c0 = LS.getItem('cds.consoleCode'); if(c0) S.codeObj = { code:c0, exp: Date.now()+15*60*1000, used:false }; }
+    var c0 = LS.getItem('cds.consoleCode');
+    S.codeObj = { code: (c0 && /^\d{8}$/.test(c0)) ? c0 : newCode() };
+    try{ S.devices = JSON.parse(LS.getItem('cds.devices')||'[]') || []; }catch(e){ S.devices = []; }
   }catch(e){}
   function saveLists(){ LS.setItem('cds.consoleState', JSON.stringify({music:S.music.items, article:S.article.items})); }
 
@@ -355,56 +375,97 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
   }
 
   function send(msg){ if(BC) BC.postMessage(msg); }
-  var CODE_TTL = 15*60*1000;
-  function shortClock(ms){
-    var t = Math.max(0, Math.floor(ms/1000));
-    return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');
-  }
+  // CO-2026-11-18-05（Jeremyzh 20:11 定案）：控制码**不再是一次性票据**——每用户一张、存库、长期有效。
+  // 整层删掉：15 分钟 TTL、倒计时/≤2 分钟转橙、绑定即「已使用」、到期自动换码、绑定后自动续码。
+  // 剩下的语义只有两条：① ⟳ 更新码＝撤销该用户全部绑定；② 单台「移出接管」＝撤销那一条。
+  var SCENE_NAME = { standby:'待机', music:'音乐', article:'文章', cast:'板书' };
   function saveCode(){
     LS.setItem('cds.codeObj', JSON.stringify(S.codeObj));
     LS.setItem('cds.consoleCode', S.codeObj.code);
   }
-  function setCode(c, used){
-    S.codeObj = { code:c, exp: Date.now()+CODE_TTL, used: !!used };
-    saveCode(); renderCode();
-  }
-  // V2.1.23：自动续码＝只换码、不撤销任何会话。接第二台屏、码到期都走这里；⟳ 才是踢人（重置接管）。
-  function newCode(){ return String(Math.floor(100000+Math.random()*900000)); }
-  function reissueCode(why){
-    var c = newCode();
-    setCode(c);
-    send({kind:'codeChanged', code:c, reason:'code_issued'});
-    return c;
-  }
+  function setCode(c){ S.codeObj = { code:c }; saveCode(); renderCode(); }
+  function newCode(){ return String(Math.floor(10000000+Math.random()*90000000)); }
   function renderCode(){
-    var o = S.codeObj, meta = $('codeMeta'), left = o.exp - Date.now();
-    $('codeText').textContent = o.code.slice(0,3)+' '+o.code.slice(3);
-    if(!meta) return;
-    if(o.used){ meta.textContent = '已使用 · 已自动出下一张码'; meta.className='meta used'; }
-    else if(left <= 0){ meta.textContent = '已过期 · 已自动换新码'; meta.className='meta bad'; }
-    else { meta.textContent = '剩 '+shortClock(left); meta.className = 'meta'+(left < 120000 ? ' warn' : ''); }
+    var o = S.codeObj, meta = $('codeMeta');
+    $('codeText').textContent = o.code.slice(0,4)+' '+o.code.slice(4);
+    if(meta){ meta.textContent = '长期有效 · 可手动更新'; meta.className = 'meta'; }
   }
-  // V2.1.23：码到期自动换新码——过期是票据时效，不是接管变更，不得因此踢掉已连屏
-  setInterval(function(){
-    if(S.codeObj && !S.codeObj.used && S.codeObj.exp - Date.now() <= 0){ reissueCode('code_expired'); toast('控制码已过期，已自动换新码（已连屏幕不受影响）'); }
-    renderCode();
-  }, 1000);
+  // 8 位码只在这里落盘一次，页面加载时回读——避免每次刷新换码让已接管的屏全掉线
+  if(!LS.getItem('cds.consoleCode')) saveCode();
+
+  // ── 已接管屏幕：B3 由「不可点击的计数」反转为「可点开 + 单台移出」 ──
+  function upsertDevice(d){
+    if(!d || !d.id) return;
+    var hit = null;
+    for(var i=0;i<S.devices.length;i++){ if(S.devices[i].id===d.id){ hit=S.devices[i]; break; } }
+    if(hit){ hit.ts = d.ts || Date.now(); if(d.scene) hit.scene = d.scene; if(d.label) hit.label = d.label; }
+    else S.devices.push({ id:d.id, label:d.label || ('教室屏幕 '+String(d.id).slice(-2)), ts:d.ts || Date.now(), scene:d.scene || 'standby' });
+    try{ LS.setItem('cds.devices', JSON.stringify(S.devices)); }catch(e){}
+    renderDevices();
+  }
+  function renderDevices(){
+    var box = $('devRows');
+    var list = S.devices || [];
+    var n = 0;
+    list.forEach(function(d){ if(Date.now() - (+d.ts||0) < 5000) n++; });
+    S.termOnline = n;
+    var c = $('count'); if(c) c.classList.toggle('zero', n===0);
+    var ct = $('countText'); if(ct) ct.textContent = n ? ('当前 '+n+' 个终端在线') : '当前 0 个终端在线';
+    if(!box) return;
+    // 每秒 beat 都重建 DOM 会让按钮在点击瞬间被换掉（实测 hit 不到）——只在签名变化时重绘
+    var sig = list.map(function(d){ return d.id+':'+(Date.now()-(+d.ts||0)<5000?'1':'0')+':'+(d.scene||''); }).join('|');
+    if(box.getAttribute('data-sig') === sig) return;
+    box.setAttribute('data-sig', sig);
+    if(!list.length){ box.removeAttribute('data-sig'); box.innerHTML = '<div class="devEmpty">还没有屏幕接管这台控制端：在屏幕输入上面的控制码</div>'; return; }
+    box.innerHTML = list.map(function(d){
+      var on = (Date.now() - (+d.ts||0) < 5000);
+      return '<div class="devRow"><span class="dot'+(on?'':' off')+'"></span>'
+        + '<span class="devName">'+esc(d.label||d.id)+'</span>'
+        + '<span class="devId">'+esc(d.id)+'</span>'
+        + '<span class="devScene">'+esc(SCENE_NAME[d.scene]||'—')+'</span>'
+        + '<button class="devKick" data-id="'+esc(d.id)+'">移出接管</button></div>';
+    }).join('');
+    [].slice.call(box.querySelectorAll('.devKick')).forEach(function(b){
+      b.addEventListener('click', function(){ kickDevice(b.getAttribute('data-id')); });
+    });
+  }
+  // 移出单台＝撤销那一条绑定（不是封禁）：可立即重接，记一条审计
+  function kickDevice(id){
+    var name = id;
+    S.devices.forEach(function(x){ if(x.id===id && x.label) name = x.label; });
+    send({kind:'binding.revoked', scope:'device', deviceId:id, reason:'kicked'});
+    // 真机＝devices.revoked_at = now + 一条审计；原型用同源 localStorage 顶替（显示端重连时按此判有效）
+    try{ var rv = JSON.parse(LS.getItem('cds.revoked')||'{}') || {}; rv[id] = Date.now(); LS.setItem('cds.revoked', JSON.stringify(rv)); }catch(e){}
+    S.devices = S.devices.filter(function(x){ return x.id !== id; });
+    try{ LS.setItem('cds.devices', JSON.stringify(S.devices)); }catch(e){}
+    renderDevices();
+    toast('已移出接管：' + name + '（随时可用同一张码重新接入）');
+  }
 
   // ── 终端在线（心跳） ──
+  // 真机：登记表 + presence 聚合；原型：同源 localStorage 的 cds.device（显示端每秒写 ts）
   function beat(){
-    var t = +(LS.getItem('cds.displayBeat')||0);
-    var n = (Date.now()-t < 3000) ? 1 : 0;
-    if(n !== S.termOnline){
-      S.termOnline = n;
-      var c = $('count');
-      c.classList.toggle('zero', n===0);
-      $('countText').textContent = n ? '当前 '+n+' 个终端在线' : '当前 0 个终端在线';
-      if(n===1) toast('教室屏幕已连上');
-      else toast('教室屏幕已断开', true);
-      render();
-    }
+    var prev = S.termOnline;
+    try{
+      var d = JSON.parse(LS.getItem('cds.device')||'null');
+      if(d && d.id && LS.getItem('cds.bound')) upsertDevice(d);
+    }catch(e){}
+    renderDevices();
+    if(prev === 0 && S.termOnline > 0) toast('教室屏幕已连上');
+    else if(prev > 0 && S.termOnline === 0) toast('教室屏幕已断开', true);
   }
   setInterval(beat, 1000);
+
+  // 顶栏计数＝入口（不再是只读指示）
+  (function(){
+    var c = $('count');
+    if(c){
+      c.addEventListener('click', function(){ var p=$('devPanel'); if(!p) return; p.hidden = !p.hidden; if(!p.hidden) renderDevices(); });
+      c.addEventListener('keydown', function(e){ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); c.click(); } });
+    }
+    var cl = $('devClose'); if(cl) cl.addEventListener('click', function(){ $('devPanel').hidden = true; });
+    renderCode(); renderDevices();
+  })();
 
   // ── 场景切换 ──
   // V2.1.2：进入「看内容」的画面（article / cast）必须先停音乐——编排 pause-first，
@@ -741,25 +802,28 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     toast('已停止播放（画面不动）'); render();
   });
 
-  // V2.1.23（CO-2026-11-18-04）：⟳ ＝ 重置接管。旧码作废 + 已绑会话全部失效 → 显示端回输码态。
-  // 注意：接第二台屏幕**不**走这里（走 ackBound 的自动续码），否则会把刚接好的第一台踢掉。
+  // CO-2026-11-18-05：⟳ ＝ 更新控制码＝重置接管（撤销该用户**全部**绑定，不只是换字符串）。
+  // 接第二台屏**不**走这里——码不再被消费，同一个码可以接任意多台。
   var rotArmed = false, rotTimer = null;
   $('refreshCode').addEventListener('click', function(){
-    var btn = this, n = S.termOnline;            // 原型单窗只有 0/1；真机 N 取 presence 聚合
+    var btn = this, n = S.termOnline;
     if(n > 0 && !rotArmed){
       rotArmed = true; btn.textContent = '再点确认';
       clearTimeout(rotTimer);
       rotTimer = setTimeout(function(){ rotArmed = false; btn.textContent = '\u27F3'; }, 3000);
-      toast('再点一次确认：会让 ' + n + ' 台屏幕掉线并回输码态'
+      toast('再点一次确认：会让 ' + n + ' 台屏幕回输码页'
         + ((S.scene==='article'||S.scene==='cast') ? '（正在投屏的会停回待机）' : ''), true);
       return;
     }
     clearTimeout(rotTimer); rotArmed = false; btn.textContent = '\u27F3';
     var c = newCode();
     setCode(c);
-    send({kind:'revoke', reason:'code_rotated', code:c});
-    toast(n ? ('已换码并重置接管：' + n + ' 台屏幕回输码态，请用新码重新输入')
-            : '已生成新控制码（15 分钟内有效，绑定一次即作废；尚无屏幕在线）');
+    // 载体：retained 会话状态快照（bound/unbound）——不是一次性撤销指令，否则刷新后重绑的屏会被再踢
+    send({kind:'binding.revoked', scope:'user', reason:'code_rotated', code:c});
+    S.devices = []; try{ LS.setItem('cds.devices','[]'); }catch(e){}
+    renderDevices();
+    toast(n ? ('已更新控制码：' + n + ' 台屏幕回输码页，请用新码重新输入')
+            : '已更新控制码（尚无屏幕接管，直接拿去接屏）');
   });
   var unbindArmed = false, unbindTimer = null;
   $('unbindAll').addEventListener('click', function(){
@@ -771,7 +835,8 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       return;
     }
     clearTimeout(unbindTimer); unbindArmed=false; b.textContent='全部解绑';
-    send({kind:'revoke'});
+    send({kind:'binding.revoked', scope:'user', reason:'unbind'});
+    S.devices = []; try{ LS.setItem('cds.devices','[]'); }catch(e){} renderDevices();
     toast('已全部解绑：所有屏幕回到输码页', true);
   });
 
@@ -836,11 +901,9 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     var d = ev.data||{};
     if(d.kind==='ack') toast(d.text||'显示端已确认');
     if(d.kind==='ackBound'){
-      S.codeObj.used = true; saveCode(); renderCode();
-      // V2.1.23：绑定成功即自动续一张码——只换码、不撤销已连会话。
-      // 否则「接第二台」只能按 ⟳，而 ⟳ 现在是重置接管，会把刚接好的第一台踢掉。
-      reissueCode('code_bound');
-      toast('教室屏幕已绑定；已自动出下一张码（接第二台直接输这张，不用点 ⟳）');
+      // CO-2026-11-18-05：码不消费、不续码——第二三台直接输同一张码。
+      if(d.deviceId) upsertDevice({ id:d.deviceId, ts:Date.now(), scene:'standby', label:'教室屏幕 '+String(d.deviceId).slice(-2) });
+      toast('教室屏幕已接管' + (S.termOnline > 1 ? ('（当前 ' + S.termOnline + ' 台）') : ''));
       beat();
     }
     // V2.1：显示端无音频，audioBlocked 已删除
