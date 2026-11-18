@@ -2,7 +2,7 @@
 
 ## 📋 文档信息
 
-- **版本**: V2.2.34（V2.2 基线 + V2.2.1…V2.2.34 订正，见 §9 变更记录）
+- **版本**: V2.2.35（V2.2 基线 + V2.2.1…V2.2.35 订正，见 §9 变更记录）
 - **更新日期**: 2026-11-18
 - **Broker**: EMQX Cloud
 - **传输**: MQTT 5.0 over WebSocket (WSS)
@@ -494,6 +494,8 @@ cds/v1/d/{deviceId}/bind              服务端 → 显示端           绑定�
   - **长按必须可取消**：`pointermove` 超过 ~10px、或页面发生滚动（`cast` 板书现在可滚，§4.6.7 ④）即取消计时。否则老师滚动板书时会弹出解绑确认框，且确认按钮很可能正好落在手指下方。
   - **热区与滚动条轨道重叠，必须避让**：V2.2.30 起 `cast` 板书是 `overflow-y:auto`，滚动条**就在屏幕右缘**，与「右下角热区」是同一块像素。两件事都能用「右下角按住不放」触发：手指按在滚动条轨道上拖动、或按在内容上想停住看，都可能凑满 3 秒。所以：**命中滚动条轨道时不做长按计时**（`pointerdown` 目标或坐标落在轨道内即放弃），热区本身也应内缩到轨道内侧；且计时期间一旦有 `scroll` 事件即清零——「拖动中」永远不算长按。这条不是文风讲究：若省掉，老师在讲到某页时把屏往下一拖，屏当场弹解绑确认框。
 
+⑯ **（V2.2.35 新增）屏端不得用本地存储「自我确认」绑定**：显示端的绑定态只有一个来源——`POST /devices/bind` 的 `200 + bound:true`（`api.md` §4.2）；此后以 `GET /devices/me`（§4.6）与本节 `device.bindState` 快照为准。`localStorage`／`sessionStorage`／`BroadcastChannel`／内存变量里出现的控制码**不得**作为绑定依据：现 `prototype/display.html` 的 `confirmCode()` 读 `localStorage['cds.consoleCode']` 做字符串相等比较即置 `cds.bound`，全文 `fetch` **0 命中** ⇒ 它只在同一浏览器内演得出「已接管」，换设备/清缓存/隐私模式必失败，并绕过 `4091`／`4092`／`4094`、4 台上限与审计。`BroadcastChannel` **只允许在 `prototype/` 内顶替服务端**（消息名与字段仍须与 §4.4／§4.6 一致，是演示载体，**不是**第二套协议），**不得**进入实现，**不得**写成验收判据。另：绑定成功后屏端**不得**保留控制码副本（码是长期口令，只用于一次 `bind`；留在本地等于把口令贴在屏上）。
+
 #### 4.6.6 「整章一屏」的三档顺序（V2.2.14，Jeremyzh 12:43 定）
 
 「整章一屏」（`pageCount > 1` 时出现）＝把当前这一章压到一屏。**降档顺序写死，不得只降字号**：
@@ -651,6 +653,7 @@ cds/v1/d/{deviceId}/bind              服务端 → 显示端           绑定�
 
 ## 9. 变更记录
 
+- **V2.2.35 (2026-11-18)**：**§4.6.5 新增 ⑯：屏端不得用本地存储「自我确认」绑定**（Chief 22:15 转达其原型层面发现：`display.html` 的输码页是假绑定）。① 绑定态唯一来源＝`POST /devices/bind` 的 `200 + bound:true`，此后以 `GET /devices/me`（§4.6）与 `device.bindState` 快照为准；`localStorage`／`sessionStorage`／`BroadcastChannel`／内存里的码**不构成**依据。② 逐字记录反例：`confirmCode()` 读 `localStorage['cds.consoleCode']` 字符串比对即置 `cds.bound`、全文 `fetch` **0 命中** ⇒ 只在同一浏览器内成立，绕过 `4091`／`4092`／`4094`、4 台上限与审计，且永远拿不到快照（屏与协议两条事实）。③ `BroadcastChannel` 仅限 `prototype/` 演示，不得进实现、不得当验收判据。④ 绑定成功后不得保留控制码副本。**零字段／零主题／零 QoS／零 `pageMap`／零 `layout` 变更**（纯屏端行为约束，同源修正见 `api.md` V2.2.16 §4.2／§8）。
 - **V2.2.34 (2026-11-18)**：**撤销 V2.2.33 的「主题段可为 guest 归属键」＋记「码行消失 ⇒ 屏失效」的落点**（Jeremyzh 22:10 裁决，经 Chief 22:10 转达；零主题／零字段／零 QoS 变更）。① **V2.2.33 作废**：裁决原话「控制端一定需要登录，屏端不需要登录」⇒ 不存在 `g_`+16hex 归属键，`{userId}` **只可能是 `users.username`**；实现不得按「像不像用户名」加校验这件事仍然成立（任何合法用户名都必须能作为主题段）。② **新增引用**：绑定存在而控制码行已消失时，由 `api.md` §4.6（V2.2.15）在 `GET /devices/me` 判 `state:"revoked"`、`reason:"code_rotated"`，服务端**同事务**覆盖 `d/{deviceId}/bind` 快照并清两条 retained——屏端按既有规则（§4 收到 `revoked` 快照 ⇒ 清本地绑定、回输码页）执行，**本文件不需要新增任何字段或消息**。③ 与 V2.2.24/V2.2.26 的关系不变：仍然**不得**用「无 retained」判未绑定，码行是否还在只能由服务端查库决定。**未动**：主题树形状、`to`、`device.bindState` 字段表、`reason` 三值、`state.report`、§4.6 全部算术与六格表。
 - **V2.2.32 (2026-11-18)**：**`castOverflow` 降级为「仅诊断」＋屏端自解绑入口的协议边界**（Jeremyzh 21:57 两件裁决，经 Chief 21:57 转达；只动本文件，`api.md`/`database.md` 与原型零字节）。① **板书溢出控制台不提示**：`state.report.castOverflow` **保留字段名与语义**（＝超出可视区、能往下滚且确实需要滚），但**仅作可观测量/诊断**——控制台不得据此弹提示、不得据此改值/回滚、不得在未上报时推断溢出；唯一允许消费方＝验收/诊断核对「是否如实上报」。补「防复发」理由：做成提示后它会变成第二套「装不下」判定，与页面自己算的结论冲突时无从裁决。（同源修正：产品侧验收/设计里若有「castOverflow 提示」类判据，须改为「不得提示」。）② **屏端自解绑＝右下角不可见热区长按 3 秒 + 二次确认 → `POST /devices/me/release`**（§4.6.5 ⑮）：**协议侧零新字段**（确认态不下发不上报）；`released:false` 仍须跳回输码页并视作已解绑；确认期间收到 `state:'revoked'` 快照则关框回输码页、不再发请求；长按须可被 `pointermove`/滚动取消，且**命中滚动条轨道时不计时**（板书滚动条与右下角热区重叠）。**未动**：`castOverflow` 的字段名与上报时机、`device.bindState` 字段表、`reason` 枚举（`code_rotated`/`kicked`/`unbind`）、§4.6 全部算术与六格表、`pageMap` 七字段、`layout` 五项、`ack.effective` 按场景给键、`scene` 四值、§4.6.6 三档。
 - **V2.2.31 (2026-11-18)**：**§1 的 DDL 指针改为「文件名＋运维台账」（只改一处措辞，零字段／零主题变更）**。原文「落库口径见 `migrations/0005` 的 rev2 草案」：`migrations/` 里那份 `0005` 是**旧模型**且已被运维移入 `docs/changes/superseded/`，同时本仓库不含 `migrations/` 目录 ⇒ 该指针在两侧都解析不到现行件（在运维本地解析到的是废止件，在仓库内则无处可解）。改为 `migrations/0005_control_codes_and_styles.sql`（rev2 定稿；DDL 不在本仓库，由运维维护，sha256 与 promote 状态见 `migrations/README-0005.md`）。同源修正：`database.md` V2.2.2、`api.md` V2.2.12。**未动**：主题形状与 `to`、`device.bindState` 字段表、`reason` 枚举（`code_rotated`/`kicked`/`unbind`）、§4.6 全部算术与六格表、`pageMap` 七字段、`layout` 五项、`c > 0 && c×F ≤ W`。
