@@ -243,9 +243,10 @@ body{font-family:var(--ui)}
     $('sepA').style.display = S.scene==='article' ? '' : 'none';
     $('presentBtn').textContent = S.article.cast ? '结束' : '投出';
     $('blankBtn').textContent = (S.scene==='standby' && S.standby.mode==='blank') ? '退出黑屏' : '黑屏';
-    // V2.1.1：音轨独立——音乐在播但画面不是音乐时，控制条上要能看见
-    var npOn = S.music.playing && S.scene !== 'music';
-    $('np').textContent = npOn ? ('♪ 停止 ' + ((S.music.items[S.music.idx]||{t:'—'}).t) + ' ' + fmt(S.music.pos)) : '';
+    // V2.1.2：非音乐画面下的音乐状态。article/cast 下必为暂停（不提供「继续」，服务端会 409）
+    var muted = (S.scene==='article' || S.scene==='cast');
+    var npOn = S.scene !== 'music' && (S.music.playing || S.music.pos > 0);
+    $('np').textContent = npOn ? ('♪ ' + ((S.music.items[S.music.idx]||{t:'—'}).t) + (muted?'（已暂停）':(' 停止 ' + fmt(S.music.pos)))) : '';
     $('np').style.cssText = npOn ? 'font-size:12px;color:#8ab4f8;padding:0 8px;white-space:nowrap' : 'display:none';
     // 分页不在这里触发：切到文章 / resize / 字号变化时显式调用 afterLayout()
   }
@@ -286,7 +287,8 @@ body{font-family:var(--ui)}
         send({kind:'article',idx:S.article.idx,page:S.article.page,cast:S.article.cast,pageCount:pages.length}); render(); return; }
       render(); return;
     }
-    if(t.id==='np'){   // V2.1.1：音轨独立 → 非音乐画面下也要能停音乐
+    if(t.id==='np'){   // V2.1.2：article/cast 下不可起音乐；待机下可停
+      if(S.scene==='article' || S.scene==='cast'){ sys('文章/板书期间不播放音乐：先回「待机」或「音乐」',1800); return; }
       S.music.playing=false;
       send({kind:'music',playing:false,pos:S.music.pos,idx:S.music.idx,action:'stop'});
       sys('已停止播放（画面不动）',1600); render(); return;
@@ -301,8 +303,13 @@ body{font-family:var(--ui)}
 
   function goto(scene){
     if(scene===S.scene){ render(); if(scene==='article') afterLayout(); return; }
+    // V2.1.2：进入「看内容」的画面必须先停音乐（编排 pause-first，不是场景指令的副作用）
+    if((scene==='article'||scene==='cast') && S.music.playing){
+      S.music.playing=false;
+      send({kind:'music',playing:false,pos:S.music.pos,idx:S.music.idx,action:'pause'});
+      sys('音乐已暂停（'+(scene==='cast'?'板书':'文章')+'期间不播放）',1800);
+    }
     S.scene=scene;
-    // V2.1.1：切画面不停音乐（配乐朗诵）
     send({kind:'scene',scene:scene});
     render();
     if(scene==='article') afterLayout();
