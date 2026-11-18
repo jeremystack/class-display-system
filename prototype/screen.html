@@ -113,7 +113,7 @@ body{font-family:var(--ui)}
     <button data-a="next">下一屏</button>
     <button data-a="present" class="danger" id="presentBtn">投出</button>
   </div>
-  <span id="np" class="np"></span>
+  <button id="np" class="np" title="点一下停止背景音乐"></button>
   <span class="sep"></span>
   <div class="grp">
     <button id="blankBtn">黑屏</button>
@@ -245,7 +245,7 @@ body{font-family:var(--ui)}
     $('blankBtn').textContent = (S.scene==='standby' && S.standby.mode==='blank') ? '退出黑屏' : '黑屏';
     // V2.1.1：音轨独立——音乐在播但画面不是音乐时，控制条上要能看见
     var npOn = S.music.playing && S.scene !== 'music';
-    $('np').textContent = npOn ? ('♪ ' + ((S.music.items[S.music.idx]||{t:'—'}).t) + ' ' + fmt(S.music.pos)) : '';
+    $('np').textContent = npOn ? ('♪ 停止 ' + ((S.music.items[S.music.idx]||{t:'—'}).t) + ' ' + fmt(S.music.pos)) : '';
     $('np').style.cssText = npOn ? 'font-size:12px;color:#8ab4f8;padding:0 8px;white-space:nowrap' : 'display:none';
     // 分页不在这里触发：切到文章 / resize / 字号变化时显式调用 afterLayout()
   }
@@ -285,6 +285,11 @@ body{font-family:var(--ui)}
       if(k2==='present'){ S.article.cast=!S.article.cast; sys(S.article.cast?'已投出：显示面=这一屏':'已结束投屏（回到待机）',1800);
         send({kind:'article',idx:S.article.idx,page:S.article.page,cast:S.article.cast,pageCount:pages.length}); render(); return; }
       render(); return;
+    }
+    if(t.id==='np'){   // V2.1.1：音轨独立 → 非音乐画面下也要能停音乐
+      S.music.playing=false;
+      send({kind:'music',playing:false,pos:S.music.pos,idx:S.music.idx,action:'stop'});
+      sys('已停止播放（画面不动）',1600); render(); return;
     }
     if(t.id==='blankBtn'){
       if(S.scene!=='standby') goto('standby');
