@@ -51,8 +51,10 @@ body{font-family:var(--ui)}
 .article .body{flex:1;font-family:var(--body);font-size:var(--fs);line-height:var(--lh);min-height:0;overflow:hidden;position:relative}
 /* V2.1.6：整章常驻 + 视口起点移动（同一套行流算法，见 display.html） */
 .article .body .flow{position:absolute;left:0;right:0;top:0;will-change:transform}
-.article .body p{margin:0 0 .9em}
-.article .sn{font-size:.62em;opacity:.5;margin-right:.5em;vertical-align:super}
+.article .body p{margin:0 0 1.1em}
+.article .sn{font-size:.62em;opacity:.5;margin-right:.5em;vertical-align:super;line-height:1}
+/* V2.1.10：每行一个 nowrap 块——行数由切行数组决定，不靠自然折行 */
+.article .body p .ln{display:block;white-space:nowrap;overflow:hidden}
 .article .foot{display:flex;justify-content:flex-end;font-size:.68rem;opacity:.5;min-height:1.4em}
 
 /* ── 板书 ── */
@@ -164,12 +166,14 @@ body{font-family:var(--ui)}
   };
 
   // ── 每个场景各自套样式（切场景原子生效，不出现默认样式帧） ──
+  var STYLE_CPL=12;                      // V2.1.10：每行字数
   function applySceneStyle(scene){
     var st=S.styles[scene]||{}; var r=document.documentElement.style;
     // V2.1.6：单屏页也吃 fontSizePx（px），不再用 1rem×scale 那种倍率——倍率算不出「一屏几行」
     var fpx = st.fontSizePx ? +st.fontSizePx : (st.fontScale ? Math.round(st.fontScale*18) : null);
     if(fpx) r.setProperty('--fs', Math.max(24, Math.min(120, fpx)) + 'px');
     if(st.lineHeight) r.setProperty('--lh', st.lineHeight);
+    if(st.charsPerLine) STYLE_CPL=Math.max(6, Math.min(40, +st.charsPerLine||12));
     if(st.bg) r.setProperty('--'+scene+'-bg',st.bg);
     if(st.fg) r.setProperty('--'+scene+'-fg',st.fg);
     $('surface').className = (scene==='standby' && S.standby.mode==='blank') ? 'blank' : '';
@@ -183,43 +187,81 @@ body{font-family:var(--ui)}
 
   function artBody(){ return document.querySelector('#surface .article .body'); }
 
+  function charW(ch){ return ch.charCodeAt(0) < 128 ? 0.5 : 1; }
+  function sliceLines(text, c){
+    var out=[], cur='', acc=0;
+    for(var i=0;i<text.length;i++){
+      var w=charW(text.charAt(i));
+      if(cur && acc+w > c+1e-9){ out.push(cur); cur=''; acc=0; }
+      cur+=text.charAt(i); acc+=w;
+    }
+    out.push(cur);
+    return out;
+  }
+  function cplMax(W){
+    var F=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fs'))||72;
+    return Math.max(6, Math.min(40, Math.floor((W||1728)/F)));
+  }
+  function cplNow(body){
+    var c=parseInt(STYLE_CPL||12,10);
+    return Math.max(6, Math.min(cplMax(body?body.clientWidth:1728), c));
+  }
+
+  // V2.1.10：算术分页（主路径）。行数＝切行数组长度
   function layoutArticle(silent){
     var body=artBody(); if(!body) return;
     var flow=body.querySelector('.flow'); if(!flow) return;
     flow.style.transform='none';
-    var lh=parseFloat(getComputedStyle(body).lineHeight)||126;
+    var cs=getComputedStyle(body);
+    var F=parseFloat(cs.fontSize)||72;
+    var lh=parseFloat(cs.lineHeight)||(F*1.75);
+    var gap=1.1*F;                      // 段距恒 1.1em，与 display 同一口径
     var H=body.clientHeight; if(H<40) return;
-    var top=flow.getBoundingClientRect().top;
     var els=[].slice.call(flow.children);
-    // V2.1.7：每节的每一行按真实几何铺开，页起点只落在行起点上。
-    // 不再用 N=floor(H/lh) 当页容量——段距让真实容量更小，按 N 定位会把边界横切在一行中间。
+    A.L=els.map(function(el){ return Math.max(1, parseInt(el.getAttribute('data-lines'),10)||1); });
     A.lineY=[]; A.verseLineIndex=[];
-    els.forEach(function(el){
-      var r=el.getBoundingClientRect();
+    var y=0, total=0;
+    A.L.forEach(function(n){
       A.verseLineIndex.push(A.lineY.length);
-      var n=Math.max(1,Math.round(r.height/lh));
-      for(var i=0;i<n;i++) A.lineY.push(r.top-top+i*lh);
+      for(var i=0;i<n;i++) A.lineY.push(y+i*lh);
+      y += n*lh + gap; total += n;
     });
-    A.totalLines=A.lineY.length;
-    A.lh=lh;
-    A.sectionCount=A.verseLineIndex.length;
-    buildPageStarts(H);
+    A.totalLines=total; A.lh=lh; A.sectionCount=A.L.length;
+    buildPageStarts(H, lh, gap);
     A.ready=true;
+    verifyModel(flow);
     applyView(silent);
   }
 
-  function buildPageStarts(H){
-    A.pageStarts=[0]; A.viewLines=0;
-    while(true){
-      var s=A.pageStarts[A.pageStarts.length-1];
-      var lim=A.lineY[s]+H, j=s;
-      while(j+1<A.lineY.length && A.lineY[j+1]+A.lh<=lim+0.5) j++;
-      if(A.pageStarts.length===1) A.viewLines=j-s+1;
-      if(j+1>=A.lineY.length) break;
-      A.pageStarts.push(j+1);
+  function buildPageStarts(H, lh, gap){
+    var ps=[0], used=0, secsOnPage=0, k=0, off=0, done=0;
+    while(k<A.L.length){
+      var remaining=A.L[k]-off;
+      if(remaining<=0){ k++; off=0; continue; }
+      var need=remaining*lh + ((secsOnPage>0 && off===0) ? gap : 0);
+      if(used+need<=H+0.5){
+        used+=need; done+=remaining; secsOnPage++; k++; off=0;
+      } else if(secsOnPage===0){
+        var per=Math.max(1, Math.floor((H+0.5)/lh)); if(per>remaining) per=remaining;
+        used+=per*lh; done+=per; off+=per;
+        ps.push(done); used=0; secsOnPage=0;
+      } else {
+        ps.push(done); used=0; secsOnPage=0;
+      }
     }
-    A.pageCount=A.pageStarts.length;
-    if(!A.viewLines) A.viewLines=1;
+    A.pageStarts=ps; A.pageCount=ps.length;
+    A.viewLines=(ps.length>1 ? ps[1] : A.totalLines) - ps[0];
+    if(A.viewLines<1) A.viewLines=1;
+  }
+
+  function verifyModel(flow){
+    var bad=0, worst=0;
+    [].slice.call(flow.children).forEach(function(el,k){
+      var exp=A.L[k]*A.lh, act=el.getBoundingClientRect().height, d=Math.abs(exp-act);
+      if(d>worst) worst=d; if(d>1) bad++;
+    });
+    A.modelWarn=bad?worst:0;
+    if(bad && window.console) console.warn('[cds] 排版模型偏差 '+worst.toFixed(1)+'px（'+bad+' 节）');
   }
 
   function sectionOfLine(line){
@@ -265,7 +307,7 @@ body{font-family:var(--ui)}
       : ('第 '+(A.pageIndex+1)+' / '+A.pageCount+' 屏');
     if(!silent && BC) BC.postMessage({kind:'pageMap', idx:S.article.idx, unit:A.unit,
       pageIndex:A.pageIndex, pageCount:A.pageCount, sectionIndex:A.sectionIndex,
-      sectionCount:A.sectionCount, totalLines:A.totalLines, viewLines:A.viewLines});
+      sectionCount:A.sectionCount, viewLines:A.viewLines, charsPerLine:STYLE_CPL});   // 7 字段协议：totalLines 不上行
   }
 
   function stepArticle(dir, steps){
@@ -327,7 +369,9 @@ body{font-family:var(--ui)}
       html='<div class="article"><div class="head"><b>'+esc(a.t)+'</b><span class="seg"></span>'+
         '<span style="margin-left:auto">'+(S.article.cast?'● 已上屏':'○ 预览（未上屏）')+'</span></div>'+
         '<div class="body"><div class="flow">'+vs.map(function(v){
-          return '<p><span class="sn">'+v[0]+'</span>'+esc(v[1])+'</p>';}).join('')+'</div></div>'+
+          var ls=sliceLines(v[1], cplNow(document.querySelector('#surface')));
+          return '<p data-lines="'+ls.length+'">'+ls.map(function(l,i){
+            return '<span class="ln">'+(i===0?'<span class="sn">'+v[0]+'</span>':'')+esc(l)+'</span>';}).join('')+'</p>';}).join('')+'</div></div>'+
         '<div class="foot"></div></div>';
     } else {
       html='<div class="cast">'+esc(S.cast.text||'（板书内容来自控制台）')+'</div>';

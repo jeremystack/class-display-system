@@ -265,7 +265,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       { t:'约伯记 3 章', v:'约伯记', ch:3 }
     ]},
     cast: { text:'', draft:'', active:false, lines:5, castId:'' },   // text=已上屏内容，draft=编辑中草稿（V2.1.5 分离）
-    style: { fontFamily:{ui:'system-ui',body:'song'}, fontSizePx:72, lineHeight:1.75, fg:'#dde3ec', bg:'#000000', align:'left' }
+    style: { fontFamily:{ui:'system-ui',body:'song'}, fontSizePx:72, lineHeight:1.75, charsPerLine:12, fg:'#dde3ec', bg:'#000000', align:'left' }
   };
   try{
     var saved = JSON.parse(LS.getItem('cds.consoleState')||'null');
@@ -430,7 +430,9 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
   }
 
   function isCoarse(){ return !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches); }
-  function measuredLines(){ var r=S.art&&S.art.report; return (r&&r.viewLines)?('实测 '+r.viewLines+' 行 / 屏'):'—（等显示端回报）'; }
+  function measuredLines(){ var r=S.art&&S.art.report; return (r&&r.viewLines)?('首屏 '+r.viewLines+' 行'):'—（等显示端回报）'; }
+  // V2.1.10：每行字数上限随字号降（可用宽 1728px = 1920 扣 5vw×2）；总范围 6–40
+  function cMax(fpx){ return Math.max(6, Math.min(40, Math.floor(1728/Math.max(24,Math.min(120,+fpx||72))))); }
 
   // V2.1.2：顶栏常驻音乐状态条。article/cast 下音乐必为 paused（继续置灰，服务端会 409）
   function renderNP(){
@@ -522,11 +524,13 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
           '<span style="margin-left:auto">'+where+(S.article.cast?'':' · 学生看不到（未上屏）')+'</span></div>'+
         '<div class="verses">'+ vs.map(function(v){ return '<p><span class="sn">'+v[0]+'</span>'+esc(v[1])+'</p>'; }).join('') +'</div>'+
         '<div style="font-size:12px;color:var(--muted);margin:0 0 8px">预览＝<b>内容一致、字号各自</b>（像素一致做不到）；分页/步进由显示端按真实几何实测，本窗不猜。'+
-          (rp.viewLines?(' 显示端当前 '+rp.viewLines+' 行/屏。'):'')+'</div>'+
+          (rp.viewLines?(' 显示端首屏 '+rp.viewLines+' 行。'):'')+'</div>'+
         '<div class="readbar">'+
           '<label>字号 <input type="range" id="rFontSize" min="24" max="120" step="4" value="'+rfpx+'"><span class="rv" id="rFontVal">'+rfpx+'px</span></label>'+
           '<label>行距 <input type="range" id="rLh" min="1.2" max="2.2" step="0.05" value="'+rlh+'"><span class="rv" id="rLhVal">'+rlh.toFixed(2)+'</span></label>'+
-          '<span class="todo">一屏 <b id="rLines">'+(rp.viewLines?(rp.viewLines+' 行（实测）'):'—（等显示端回报）')+'</b> · 行距越小行数越多；改一次即下发，显示端重排</span>'+
+          '<label title="每行几个字；上限随字号自动降（每行字数 × 字号 ≤ 可用宽）">每行 <input type="range" id="rChars" min="6" max="'+cMax(rfpx)+'" step="1" value="'+Math.min(cMax(rfpx), (S.style.charsPerLine||12))+'" data-cmax="'+cMax(rfpx)+'"><span class="rv" id="rCharsVal">'+Math.min(cMax(rfpx), (S.style.charsPerLine||12))+' 字</span>'+
+            '<em class="ro" id="rCharsMax" style="font-size:11px">上限 '+cMax(rfpx)+' 字</em></label>'+
+          '<span class="todo"><b id="rLines">'+(rp.viewLines?('首屏 '+rp.viewLines+' 行'):'—（等显示端回报）')+'</b> · 每行 '+(S.style.charsPerLine||12)+' 字 · 改一次即下发，显示端重排重发</span>'+
         '</div>'+
         '<div class="castbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
           '<button data-a="unit">'+(u==='section'?'切到「按屏」':'切到「按节」')+'</button>'+
@@ -739,6 +743,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     S.style = {
       fontFamily:{ ui:'system-ui', body:$('sFont').value },
       fontSizePx: fpx, lineHeight:+$('sLh').value,
+      charsPerLine: Math.max(6, Math.min(cMax(fpx), +(S.style.charsPerLine||12))),
       fg:$('sFg').value, bg:$('sBg').value, align:$('sAlign').value
     };
     $('sFontVal').textContent = fpx + ' px';
@@ -767,9 +772,21 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
   // V2.1.9：阅读场景常驻的字号/行距（与「显示样式」面板同一状态，改一次即下发）
   document.addEventListener('input', function(ev){
     var id = ev.target && ev.target.id;
-    if(id !== 'rFontSize' && id !== 'rLh') return;
-    if(id === 'rFontSize'){ $('sFontSize').value = ev.target.value; var f=$('rFontVal'); if(f) f.textContent = ev.target.value+'px'; }
-    else { $('sLh').value = ev.target.value; var l=$('rLhVal'); if(l) l.textContent = (+ev.target.value).toFixed(2); }
+    if(id !== 'rFontSize' && id !== 'rLh' && id !== 'rChars') return;
+    if(id === 'rFontSize'){
+      $('sFontSize').value = ev.target.value; var f=$('rFontVal'); if(f) f.textContent = ev.target.value+'px';
+      // V2.1.10：字号变大 → 每行字数上限自动降，并把当前值 clamp 到新上限（写明「上限」）
+      var rc=$('rChars'), mx=cMax(+ev.target.value);
+      if(rc){ rc.max=mx; if(+rc.value>mx){ rc.value=mx; S.style.charsPerLine=mx; } }
+      var rcm=$('rCharsMax'); if(rcm) rcm.textContent='上限 '+mx+' 字';
+      var rcv=$('rCharsVal'); if(rcv) rcv.textContent=(S.style.charsPerLine||12)+' 字'+(+rc.value>=mx?'（上限）':'');
+    }
+    else if(id === 'rLh'){ $('sLh').value = ev.target.value; var l=$('rLhVal'); if(l) l.textContent = (+ev.target.value).toFixed(2); }
+    else {
+      var c=Math.max(6, Math.min(cMax($('sFontSize').value), +ev.target.value||12));
+      S.style.charsPerLine=c; ev.target.value=c;
+      var cv=$('rCharsVal'); if(cv) cv.textContent=c+' 字'+(c>=cMax($('sFontSize').value)?'（上限）':'');
+    }
     // 拖滑块时不要整块 render（会重建 DOM、滑块失去焦点）
     publishStyle(true);
     var sp=$('styleDetails'); if(sp) sp.open = false;
@@ -790,7 +807,8 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     if(d.kind==='pageMap'){
       S.art.report = d;
       var est=$('sFontEst'); if(est) est.textContent = measuredLines();
-      var rln=$('rLines'); if(rln) rln.textContent = d.viewLines ? (d.viewLines+' 行（实测）') : '—（等显示端回报）';
+      var rln=$('rLines'); if(rln) rln.textContent = d.viewLines ? ('首屏 '+d.viewLines+' 行') : '—（等显示端回报）';
+      if(typeof d.charsPerLine==='number') S.style.charsPerLine=d.charsPerLine;   // 显示端回报实际生效值
       if(typeof d.unit==='string') S.article.unit=d.unit;
       if(typeof d.pageIndex==='number') S.article.page=d.pageIndex;
       if(typeof d.effectivePx==='number') toast('整章一屏：实际字号 '+d.effectivePx+'px（步长 4）');

@@ -66,7 +66,9 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
 /* V2.1.6：整章常驻，只移动视口起点（不切片文本，段距只存在于一处 CSS） */
 .body .flow{position:absolute;left:0;right:0;top:0;will-change:transform}
 .body p{margin:0 0 1.1em;transition:font-size .2s ease,color .2s ease}
-.body .sn{color:var(--cds-fg-muted);font-size:.6em;vertical-align:.25em;margin-right:.5em;font-family:var(--cds-font-ui)}
+.body .sn{color:var(--cds-fg-muted);font-size:.6em;vertical-align:.25em;margin-right:.5em;font-family:var(--cds-font-ui);line-height:1}
+/* V2.1.10：每行一个 nowrap 块——行数由切行数组决定，不靠浏览器自然折行（混排宽度不可算） */
+.body p .ln{display:block;white-space:nowrap;overflow:hidden}
 
 .cast{height:100%;display:flex;align-items:center;justify-content:center}
 /* V2.1.6：板书用同一 fontSizePx（删掉 min(…, 6.5vh)：6.5vh 在 1080p＝70.2px，72px 以上全无效）；
@@ -141,6 +143,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   function sysOff(){ $('sys').className=''; }
 
   // ── 样式（本地缓存优先，避免闪字） ──
+  var STYLE_CPL=12;                       // V2.1.10：每行字数（默认 12）
   function applyStyle(st){
     if(!st) return;
     var r=document.documentElement.style;
@@ -156,6 +159,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     if(st.fg){ r.setProperty('--cds-fg', st.fg); }
     if(st.bg){ r.setProperty('--cds-bg', st.bg); }
     if(st.align) r.setProperty('--cds-align', st.align);
+    if(st.charsPerLine) STYLE_CPL=Math.max(6, Math.min(40, +st.charsPerLine||12));
   }
   try{ applyStyle(JSON.parse(LS.getItem('cds.style')||'null')); }catch(e){}
 
@@ -188,43 +192,87 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
 
   function artBody(){ return document.querySelector('#content .article .body'); }
 
+  // ── V2.1.10：算术分页（主路径）。行数＝切行数组长度，不靠自然折行 ──
+  function charW(ch){ return ch.charCodeAt(0) < 128 ? 0.5 : 1; }   // 全角 1／半角 0.5
+  function sliceLines(text, c){
+    var out=[], cur='', acc=0;
+    for(var i=0;i<text.length;i++){
+      var w=charW(text.charAt(i));
+      if(cur && acc+w > c+1e-9){ out.push(cur); cur=''; acc=0; }
+      cur+=text.charAt(i); acc+=w;
+    }
+    out.push(cur);
+    return out;
+  }
+  function cplMax(W){
+    var F=parseFloat(document.documentElement.style.getPropertyValue('--cds-font-size'))||72;
+    return Math.max(6, Math.min(40, Math.floor((W||1728)/F)));
+  }
+  function cplNow(body){
+    var c=parseInt(STYLE_CPL||12,10);
+    return Math.max(6, Math.min(cplMax(body?body.clientWidth:1728), c));
+  }
+
   function layoutArticle(silent){
     var body=artBody(); if(!body) return;
     var flow=body.querySelector('.flow'); if(!flow) return;
     flow.style.transform='none';
-    var lh=parseFloat(getComputedStyle(body).lineHeight)||126;
+    var cs=getComputedStyle(body);
+    var F=parseFloat(cs.fontSize)||72;
+    var lh=parseFloat(cs.lineHeight)||(F*1.75);
+    var gap=1.1*F;                        // 段距恒 1.1em；lineHeight 只改行高
     var H=body.clientHeight; if(H<40) return;
-    var top=flow.getBoundingClientRect().top;
     var els=[].slice.call(flow.children);
-    // V2.1.7：每节的每一行按真实几何铺开，页起点只落在行起点上。
-    // 不再用 N=floor(H/lh) 当页容量——段距让真实容量更小，按 N 定位会把边界横切在一行中间。
+    A.L=els.map(function(el){ return Math.max(1, parseInt(el.getAttribute('data-lines'),10)||1); });
     A.lineY=[]; A.verseLineIndex=[];
-    els.forEach(function(el){
-      var r=el.getBoundingClientRect();
+    var y=0, total=0;
+    A.L.forEach(function(n){
       A.verseLineIndex.push(A.lineY.length);
-      var n=Math.max(1,Math.round(r.height/lh));
-      for(var i=0;i<n;i++) A.lineY.push(r.top-top+i*lh);
+      for(var i=0;i<n;i++) A.lineY.push(y+i*lh);
+      y += n*lh + gap;
+      total += n;
     });
-    A.totalLines=A.lineY.length;
-    A.lh=lh;
-    A.sectionCount=A.verseLineIndex.length;
-    buildPageStarts(H);
+    A.totalLines=total; A.lh=lh; A.gap=gap; A.sectionCount=A.L.length;
+    buildPageStarts(H, lh, gap);
     A.ready=true;
+    verifyModel(flow);                    // DOM 只校验，不覆盖
     applyView(silent);
   }
 
-  function buildPageStarts(H){
-    A.pageStarts=[0]; A.viewLines=0;
-    while(true){
-      var s=A.pageStarts[A.pageStarts.length-1];
-      var lim=A.lineY[s]+H, j=s;
-      while(j+1<A.lineY.length && A.lineY[j+1]+A.lh<=lim+0.5) j++;
-      if(A.pageStarts.length===1) A.viewLines=j-s+1;
-      if(j+1>=A.lineY.length) break;
-      A.pageStarts.push(j+1);
+  // 装页：整节下移（唯一规则）；某节自身超一屏才在节内切（页脚标「续」）
+  function buildPageStarts(H, lh, gap){
+    var ps=[0], used=0, secsOnPage=0, k=0, off=0, done=0;
+    while(k<A.L.length){
+      var remaining=A.L[k]-off;
+      if(remaining<=0){ k++; off=0; continue; }
+      var need=remaining*lh + ((secsOnPage>0 && off===0) ? gap : 0);
+      if(used+need<=H+0.5){
+        used+=need; done+=remaining; secsOnPage++; k++; off=0;
+      } else if(secsOnPage===0){
+        var per=Math.max(1, Math.floor((H+0.5)/lh));
+        if(per>remaining) per=remaining;
+        used+=per*lh; done+=per; off+=per;
+        ps.push(done); used=0; secsOnPage=0;
+      } else {
+        ps.push(done); used=0; secsOnPage=0;
+      }
     }
-    A.pageCount=A.pageStarts.length;
-    if(!A.viewLines) A.viewLines=1;
+    A.pageStarts=ps;
+    A.pageCount=ps.length;
+    A.viewLines=(ps.length>1 ? ps[1] : A.totalLines) - ps[0];
+    if(A.viewLines<1) A.viewLines=1;
+  }
+
+  // 校验：算术 vs 真实几何，误差 >1px 告警（mqtt.md §4.6.2：模型错＝bug，不得静默覆盖）
+  function verifyModel(flow){
+    var bad=0, worst=0;
+    [].slice.call(flow.children).forEach(function(el,k){
+      var exp=A.L[k]*A.lh, act=el.getBoundingClientRect().height;
+      var d=Math.abs(exp-act); if(d>worst) worst=d;
+      if(d>1) bad++;
+    });
+    A.modelWarn=bad?worst:0;
+    if(bad && window.console) console.warn('[cds] 排版模型偏差 '+worst.toFixed(1)+'px（'+bad+' 节），按算术后继续');
   }
 
   function sectionOfLine(line){
@@ -267,10 +315,10 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     var seg=document.querySelector('#content .article .head .seg');
     if(seg) seg.textContent = A.unit==='section'
       ? ('第 '+(A.sectionIndex+1)+' / '+A.sectionCount+' 节')
-      : ('第 '+(A.pageIndex+1)+' / '+A.pageCount+' 屏');
+      : ('第 '+(A.pageIndex+1)+' / '+A.pageCount+' 屏 · 全篇 '+A.totalLines+' 行');
     if(!silent && BC) BC.postMessage({kind:'pageMap', idx:S.article.idx, unit:A.unit,
       pageIndex:A.pageIndex, pageCount:A.pageCount, sectionIndex:A.sectionIndex,
-      sectionCount:A.sectionCount, totalLines:A.totalLines, viewLines:A.viewLines});
+      sectionCount:A.sectionCount, viewLines:A.viewLines, charsPerLine:STYLE_CPL});   // 7 字段协议：totalLines 不上行
   }
 
   function stepArticle(dir, steps){
@@ -339,9 +387,13 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     } else if(S.scene==='article'){
       var a=S.article.items[S.article.idx]||{t:'诗篇 23 章',v:'诗篇',ch:23};
       var vs=VERSES[a.ch]||VERSES[23];
+      var cpl=cplNow(document.getElementById('content'));
       html='<div class="article"><div class="head"><b>'+esc(a.t)+'</b><span class="seg"></span></div>'+
         '<div class="body"><div class="flow">'+vs.map(function(v){
-          return '<p><span class="sn">'+v[0]+'</span>'+esc(v[1])+'</p>'; }).join('')+'</div></div>'+
+          var ls=sliceLines(v[1], cpl);
+          return '<p data-lines="'+ls.length+'">'+ls.map(function(l,i){
+            return '<span class="ln">'+(i===0?'<span class="sn">'+v[0]+'</span>':'')+esc(l)+'</span>'; }).join('')+'</p>';
+        }).join('')+'</div></div>'+
         '<div class="foot"></div></div>';
     } else if(S.scene==='cast'){
       html='<div class="cast"><div class="paper" data-cast-id="'+(S.cast.castId||'')+'">'+esc(S.cast.text||'（板书内容）')+'</div></div>';
