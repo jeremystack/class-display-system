@@ -62,7 +62,7 @@ QoS     : 1
 
 **三条硬规则（V2.2.23，CO-2026-11-18-05：一用户一控制端、控制码长期有效）**
 
-1. **主题段一律用 `userId` / `deviceId`，禁止使用控制码。** 控制码在本版之后是**长期口令**（不自动过期，只在控制端手动刷新时更换）：写进 topic 等于向所有订阅者广播口令，retained 还会把它长期留在 broker 上；ACL 目标态也写不出稳定规则（码一换，规则全要跟着改）。旧形状 `cds/v1/{deviceCode}/...` **已作废**（`deviceCode` 降为历史列，落库口径见 `database.md` 的 `0005`）。
+1. **主题段一律用 `userId` / `deviceId`，禁止使用控制码。** 控制码在本版之后是**长期口令**（不自动过期，只在控制端手动刷新时更换）：写进 topic 等于向所有订阅者广播口令，retained 还会把它长期留在 broker 上；ACL 目标态也写不出稳定规则（码一换，规则全要跟着改）。旧形状 `cds/v1/{deviceCode}/...` **已作废**（`deviceCode` 降为历史列，落库口径见 `migrations/0005` 的 rev2 草案：`control_codes(user_id, code, rotated_at)` + `device_bindings(device_id, user_id, bound_at, revoked_at)`）。
 2. **`cmd` 共用一条**：一个控制端控同户全部屏，`cds/v1/u/{userId}/cmd` 广播即达。
 3. **`state` / `presence` / `ack` 必须每屏一条叶。** `state`、`presence` 都是 `retain=true`，共用一条即**后写覆盖**——`layout.availW` 随屏而异（1280→1152 / 1920→1728），共用后只剩最后一台的几何，另一台必然踩 §4.6 的静默 `clamp`（锁 24 被收回 18）；`presence` 的 LWT 每连接一条，共用时一台断线即整户判离线。`ack` 共用则必须往 payload 里塞 `deviceId`（改 `ack` 形状），且回执来源无法从主题判定。
 
