@@ -1,8 +1,8 @@
 # Class Display System 数据库设计文档
 
 ## 📋 文档信息
-- **版本**: V2.2
-- **更新日期**: 2026-11-17 14:20
+- **版本**: V2.2.1
+- **更新日期**: 2026-11-18 20:26
 - **数据库**: Cloudflare D1 (SQLite)
 
 ---
@@ -40,6 +40,10 @@ CREATE TABLE devices (
 **说明**:
 - 单控制台控制模式：设备只接受一个用户控制
 - `device_code` 用于快速连接和验证
+
+> **V2.2.1 口径变更（CO-2026-11-18-05，一用户一控制端／控制码长期有效）：`devices.user_id` 与 `devices.bound_at` 自本版起停止写入、不再读取。**
+> 绑定状态唯一来源改为 `device_bindings(device_id, user_id, bound_at, revoked_at, updated_at)`（见 `migrations/0005` rev2 草案）；`devices.device_code` 降为历史列（新流程写哨兵值，**不得**用作授权维度——`'x'||device_id` 恒定可猜），控制码改由 `control_codes(user_id, code, rotated_at)` 承载（一用户一张、8 位数字、长期有效）。
+> **为什么必须写在这里而不是只写在迁移注释里**：两处同时写＝同一事实两处定义，踢出时漏改一处，控制台与 REST 会各显示一个答案。`devices.user_id` / `bound_at` 两列留到 T-01 维护窗口的 12-step 重建时一并删除。
 
 ---
 
