@@ -214,7 +214,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
         </select>
       </label>
       <label class="field">显示端字号 <span id="sFontVal">72 px</span>
-        <input type="range" id="sFontSize" min="24" max="120" step="4" value="72">
+        <input type="range" id="sFontSize" min="24" max="160" step="4" value="72">
         <span class="hintline" id="sFontEst">—（等显示端回报）</span>
       </label>
 
@@ -265,12 +265,15 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       { t:'约伯记 3 章', v:'约伯记', ch:3 }
     ]},
     cast: { text:'', draft:'', active:false, lines:5, castId:'' },   // text=已上屏内容，draft=编辑中草稿（V2.1.5 分离）
-    style: { fontFamily:{ui:'system-ui',body:'song'}, fontSizePx:72, lineHeight:1.75, charsPerLine:12, fg:'#dde3ec', bg:'#000000', align:'left' }
+    // V2.1.11：字号/每行字数默认 auto（由显示端按屏高/屏宽派生），拖过滑块才锁定
+    style: { fontFamily:{ui:'system-ui',body:'song'}, fontSizePx:'auto', lineHeight:1.75, charsPerLine:'auto', fg:'#dde3ec', bg:'#000000', align:'left' }
   };
   try{
     var saved = JSON.parse(LS.getItem('cds.consoleState')||'null');
     if(saved){ S.music.items = saved.music; S.article.items = saved.article; }
     var st = JSON.parse(LS.getItem('cds.style')||'null'); if(st) S.style = st;
+    if(!S.style.fontSizePx) S.style.fontSizePx='auto';      // V2.1.11：缺省即 auto
+    if(!S.style.charsPerLine) S.style.charsPerLine='auto';
     S.cast.draft = LS.getItem('cds.castDraft') || '';
     var cl = LS.getItem('cds.castLines'); if(cl) S.cast.lines = (cl==='all' ? 'all' : +cl);
     var cc = LS.getItem('cds.castId'); if(cc) S.cast.castId = cc;
@@ -431,8 +434,12 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
 
   function isCoarse(){ return !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches); }
   function measuredLines(){ var r=S.art&&S.art.report; return (r&&r.viewLines)?('首屏 '+r.viewLines+' 行'):'—（等显示端回报）'; }
-  // V2.1.10：每行字数上限随字号降（可用宽 1728px = 1920 扣 5vw×2）；总范围 6–40
-  function cMax(fpx){ return Math.max(6, Math.min(40, Math.floor(1728/Math.max(24,Math.min(120,+fpx||72))))); }
+  // V2.1.11：有效上限 = min(24 可读性底线, floor(1728÷字号))；24 不是技术限制（24px 下 floor 可达 72），
+  // 是一行超过 24 个全角字后排跟行会跳字
+  function cMax(fpx){ var f=+fpx; if(!f) f=72; return Math.max(6, Math.min(24, Math.floor(1728/Math.max(24,Math.min(160,f))))); }
+  function cplOf(){ return (S.style.charsPerLine==='auto'||!S.style.charsPerLine) ? cMax(cNom()) : Math.min(cMax(cNom()), +S.style.charsPerLine); }
+  function cplLabel(){ return (S.style.charsPerLine==='auto'||!S.style.charsPerLine) ? ('自动 '+cplOf()+' 字') : (cplOf()+' 字'); }
+  function cNom(){ var v=S.style.fontSizePx; return (v==='auto'||!v) ? 72 : +v; }
 
   // V2.1.2：顶栏常驻音乐状态条。article/cast 下音乐必为 paused（继续置灰，服务端会 409）
   function renderNP(){
@@ -514,7 +521,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       var a = S.article.items[S.article.idx] || {v:'诗篇',ch:23,t:'诗篇 23 章'};
       var vs = VERSES[a.ch] || VERSES[23];
       var rp = S.art.report || {}, u = S.article.unit || 'page';
-      var rfpx = Math.max(24, Math.min(120, S.style.fontSizePx||72)), rlh = +(S.style.lineHeight||1.75).toFixed(2);
+      var rfpx = Math.max(24, Math.min(160, cNom())), rlh = +(S.style.lineHeight||1.75).toFixed(2);
       // 屏数/节数由显示端实测回报；未回报前显示「—」而不是猜一个数（控制台不算分页）
       var where = (u==='section')
         ? ('节 '+((rp.sectionIndex!=null?rp.sectionIndex+1:'—'))+' / '+(rp.sectionCount||'—'))
@@ -526,11 +533,11 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
         '<div style="font-size:12px;color:var(--muted);margin:0 0 8px">预览＝<b>内容一致、字号各自</b>（像素一致做不到）；分页/步进由显示端按真实几何实测，本窗不猜。'+
           (rp.viewLines?(' 显示端首屏 '+rp.viewLines+' 行。'):'')+'</div>'+
         '<div class="readbar">'+
-          '<label>字号 <input type="range" id="rFontSize" min="24" max="120" step="4" value="'+rfpx+'"><span class="rv" id="rFontVal">'+rfpx+'px</span></label>'+
+          '<label>字号 <input type="range" id="rFontSize" min="24" max="160" step="4" value="'+rfpx+'"><span class="rv" id="rFontVal">'+(S.style.fontSizePx==='auto'?'自动':rfpx+'px')+'</span></label>'+
           '<label>行距 <input type="range" id="rLh" min="1.2" max="2.2" step="0.05" value="'+rlh+'"><span class="rv" id="rLhVal">'+rlh.toFixed(2)+'</span></label>'+
-          '<label title="每行几个字；上限随字号自动降（每行字数 × 字号 ≤ 可用宽）">每行 <input type="range" id="rChars" min="6" max="'+cMax(rfpx)+'" step="1" value="'+Math.min(cMax(rfpx), (S.style.charsPerLine||12))+'" data-cmax="'+cMax(rfpx)+'"><span class="rv" id="rCharsVal">'+Math.min(cMax(rfpx), (S.style.charsPerLine||12))+' 字</span>'+
+          '<label title="每行几个字；默认 auto（按显示端屏宽÷字号），上限 24 是可读性底线">每行 <input type="range" id="rChars" min="6" max="'+cMax(rfpx)+'" step="1" value="'+cplOf()+'" data-cmax="'+cMax(rfpx)+'"><span class="rv" id="rCharsVal">'+cplLabel()+'</span>'+
             '<em class="ro" id="rCharsMax" style="font-size:11px">上限 '+cMax(rfpx)+' 字</em></label>'+
-          '<span class="todo"><b id="rLines">'+(rp.viewLines?('首屏 '+rp.viewLines+' 行'):'—（等显示端回报）')+'</b> · 每行 '+(S.style.charsPerLine||12)+' 字 · 改一次即下发，显示端重排重发</span>'+
+          '<span class="todo"><b id="rLines">'+(rp.viewLines?('首屏 '+rp.viewLines+' 行'):'—（等显示端回报）')+'</b> · 每行 '+cplLabel()+' · 改一次即下发，显示端重排重发</span>'+
         '</div>'+
         '<div class="castbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
           '<button data-a="unit">'+(u==='section'?'切到「按屏」':'切到「按节」')+'</button>'+
@@ -739,11 +746,11 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
   // ── 样式下发 ──
   var map = { song:'"Songti SC","Noto Serif SC",serif', hei:'"PingFang SC","Microsoft YaHei",sans-serif', kai:'"Kaiti SC",KaiTi,serif', 'system-ui':'system-ui,sans-serif' };
   function readStyle(){
-    var fpx = Math.max(24, Math.min(120, +$('sFontSize').value || 72));
+    var fpx = Math.max(24, Math.min(160, +$('sFontSize').value || 72));
     S.style = {
       fontFamily:{ ui:'system-ui', body:$('sFont').value },
-      fontSizePx: fpx, lineHeight:+$('sLh').value,
-      charsPerLine: Math.max(6, Math.min(cMax(fpx), +(S.style.charsPerLine||12))),
+      fontSizePx: (S.style.fontSizePx==='auto' ? 'auto' : fpx), lineHeight:+$('sLh').value,
+      charsPerLine: (S.style.charsPerLine==='auto' ? 'auto' : Math.max(6, Math.min(cMax(fpx), +S.style.charsPerLine))),
       fg:$('sFg').value, bg:$('sBg').value, align:$('sAlign').value
     };
     $('sFontVal').textContent = fpx + ' px';
@@ -752,7 +759,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     // 这里曾用固定常数当可用高再除以 (fpx*行高)：那个常数≠.body.clientHeight(≈911)，且公式不含段距(0.63 行/节)，
     // 72px 给 7 行而真实 5 行；行距成了用户可调项后，任何本地公式都会立刻过期。
     var e=$('sFontEst'); if(e) e.textContent = measuredLines();
-    var sm=$('styleSummary'); if(sm) sm.textContent=($('sFont').selectedOptions[0]||{}).textContent+' · '+fpx+'px · 行高 '+S.style.lineHeight.toFixed(2);
+    var sm=$('styleSummary'); if(sm) sm.textContent=($('sFont').selectedOptions[0]||{}).textContent+' · '+(S.style.fontSizePx==='auto'?'字号自动':fpx+'px')+' · 行高 '+S.style.lineHeight.toFixed(2)+' · 每行 '+cplLabel();
     return S.style;
   }
   ['sFont','sFontSize','sLh','sAlign','sFg','sBg'].forEach(function(id){
@@ -774,16 +781,16 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     var id = ev.target && ev.target.id;
     if(id !== 'rFontSize' && id !== 'rLh' && id !== 'rChars') return;
     if(id === 'rFontSize'){
-      $('sFontSize').value = ev.target.value; var f=$('rFontVal'); if(f) f.textContent = ev.target.value+'px';
+      $('sFontSize').value = ev.target.value; S.style.fontSizePx = +ev.target.value; var f=$('rFontVal'); if(f) f.textContent = ev.target.value+'px';
       // V2.1.10：字号变大 → 每行字数上限自动降，并把当前值 clamp 到新上限（写明「上限」）
       var rc=$('rChars'), mx=cMax(+ev.target.value);
       if(rc){ rc.max=mx; if(+rc.value>mx){ rc.value=mx; S.style.charsPerLine=mx; } }
       var rcm=$('rCharsMax'); if(rcm) rcm.textContent='上限 '+mx+' 字';
-      var rcv=$('rCharsVal'); if(rcv) rcv.textContent=(S.style.charsPerLine||12)+' 字'+(+rc.value>=mx?'（上限）':'');
+      var rcv=$('rCharsVal'); if(rcv) rcv.textContent=cplLabel()+(+rc.value>=mx?'（上限）':'');
     }
     else if(id === 'rLh'){ $('sLh').value = ev.target.value; var l=$('rLhVal'); if(l) l.textContent = (+ev.target.value).toFixed(2); }
     else {
-      var c=Math.max(6, Math.min(cMax($('sFontSize').value), +ev.target.value||12));
+      var c=Math.max(6, Math.min(cMax($('sFontSize').value), +ev.target.value||6));
       S.style.charsPerLine=c; ev.target.value=c;
       var cv=$('rCharsVal'); if(cv) cv.textContent=c+' 字'+(c>=cMax($('sFontSize').value)?'（上限）':'');
     }
@@ -808,7 +815,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       S.art.report = d;
       var est=$('sFontEst'); if(est) est.textContent = measuredLines();
       var rln=$('rLines'); if(rln) rln.textContent = d.viewLines ? ('首屏 '+d.viewLines+' 行') : '—（等显示端回报）';
-      if(typeof d.charsPerLine==='number') S.style.charsPerLine=d.charsPerLine;   // 显示端回报实际生效值
+      if(typeof d.charsPerLine==='number') S.art.effCpl=d.charsPerLine;   // 显示端回报派生结果，不覆盖本机 auto 开关
       if(typeof d.unit==='string') S.article.unit=d.unit;
       if(typeof d.pageIndex==='number') S.article.page=d.pageIndex;
       if(typeof d.effectivePx==='number') toast('整章一屏：实际字号 '+d.effectivePx+'px（步长 4）');
@@ -818,7 +825,8 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     }
     if(d.kind==='styleApplied'){
       var e=d.effective||{};
-      if(typeof e.charsPerLine==='number') S.style.charsPerLine=e.charsPerLine;
+      // 显示端回报的是**派生结果**，不能覆盖本机的 auto 开关（否则下一次下发就把 auto 锁成数字）
+      if(typeof e.charsPerLine==='number'){ S.art.effCpl=e.charsPerLine; var _rcv=$('rCharsVal'); if(_rcv && (S.style.charsPerLine==='auto'||!S.style.charsPerLine)) _rcv.textContent='自动 '+e.charsPerLine+' 字'; }
       if(d.note) toast(d.note);
     }
     if(d.kind==='castMetrics'){ S.cast.effPx=d.effectivePx; S.cast.setPx=d.settingPx; if(S.scene==='cast') render(); }
@@ -828,8 +836,8 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
   renderCode();
   $('sFont').value = (S.style.fontFamily && S.style.fontFamily.body) || 'song';
   // V2.1.5 存量迁移：旧 fontScale 量程（0.8–2.0 → 14–36px）在大屏上全部不可用，一律重置为 72px
-  var fpx0 = S.style.fontSizePx || 72;
-  $('sFontSize').value = Math.max(24, Math.min(120, fpx0)); $('sLh').value = S.style.lineHeight;
+  var fpx0 = cNom();
+  $('sFontSize').value = Math.max(24, Math.min(160, fpx0)); $('sLh').value = S.style.lineHeight;
   applyCF();
   $('cfMinus').addEventListener('click', function(){ bumpCF(-0.1); });
   $('cfPlus').addEventListener('click', function(){ bumpCF(0.1); });

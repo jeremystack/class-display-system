@@ -143,7 +143,8 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   function sysOff(){ $('sys').className=''; }
 
   // ── 样式（本地缓存优先，避免闪字） ──
-  var STYLE_CPL=12;                       // V2.1.10：每行字数（默认 12）
+  // V2.1.11：每行字数默认 auto（按屏宽 ÷ 字号派生）；手动档只在老师拖过滑块后生效
+  var STYLE_CPL='auto';
   function applyStyle(st){
     if(!st) return;
     var r=document.documentElement.style;
@@ -152,14 +153,17 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
       r.setProperty('--cds-font-body', map[st.fontFamily.body]||st.fontStack||'system-ui,sans-serif');
     }
     // V2.1.5：字号以 px 为准（24–120）。旧字段 fontScale 只作兼容：×18 折算 px。
-    var fpx = st.fontSizePx ? +st.fontSizePx : (st.fontScale ? Math.round(st.fontScale * 18) : null);
-    if(fpx) r.setProperty('--cds-font-size', Math.max(24, Math.min(120, fpx)) + 'px');
+    var fpx = (st.fontSizePx && st.fontSizePx!=='auto') ? +st.fontSizePx : (st.fontScale ? Math.round(st.fontScale * 18) : null);
+    // V2.1.11：缺省／auto ⇒ 按本机屏高派生 round4(H×6.7%)（720p 48 / 1080p 72 / 1440p 96 / 2160p 144）
+    if(!fpx){ var _h=window.innerHeight||1080; fpx=Math.max(24, Math.min(160, Math.round(_h*0.067/4)*4)); }
+    if(fpx) r.setProperty('--cds-font-size', Math.max(24, Math.min(160, fpx)) + 'px');
     if(st.fontScale) r.setProperty('--cds-font-scale', st.fontScale);
     if(st.lineHeight) r.setProperty('--cds-line-height', st.lineHeight);
     if(st.fg){ r.setProperty('--cds-fg', st.fg); }
     if(st.bg){ r.setProperty('--cds-bg', st.bg); }
     if(st.align) r.setProperty('--cds-align', st.align);
-    if(st.charsPerLine) STYLE_CPL=Math.max(6, Math.min(40, +st.charsPerLine||12));
+    if(st.charsPerLine==='auto') STYLE_CPL='auto';
+    else if(st.charsPerLine!=null && st.charsPerLine!=='') STYLE_CPL=Math.max(6, Math.min(40, +st.charsPerLine||12));
   }
   // mqtt §4.6：effective 回带生效值，只走独立消息，不进 pageMap（pageMap 恒 7 字段）
   function sendStyleApplied(note){
@@ -167,8 +171,10 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     var r=getComputedStyle(document.documentElement);
     var epx=parseFloat(r.getPropertyValue('--cds-font-size'))||72;
     var elh=parseFloat(r.getPropertyValue('--cds-line-height'))||1.75;
+    // V2.1.11：auto 回**派生出的整数**，否则控制台看到的是字符串 "auto"
+    var _b=document.querySelector('#content .article .body');
     BC.postMessage({kind:'styleApplied',
-      effective:{fontSizePx:epx, lineHeight:elh, charsPerLine:STYLE_CPL}, note:note||''});
+      effective:{fontSizePx:epx, lineHeight:elh, charsPerLine:cplNow(_b)}, note:note||''});
   }
   try{ applyStyle(JSON.parse(LS.getItem('cds.style')||'null')); }catch(e){}
 
@@ -213,13 +219,17 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     out.push(cur);
     return out;
   }
+  // 有效上限 = min(24 可读性底线, floor(W÷F) 物理上限)。24 不是技术限制（24px 字号下 floor 可达 72），
+  // 是一行超过 24 个全角字后排跟行会跳字——不得以「装得下」为理由放开。
   function cplMax(W){
     var F=parseFloat(document.documentElement.style.getPropertyValue('--cds-font-size'))||72;
-    return Math.max(6, Math.min(40, Math.floor((W||1728)/F)));
+    return Math.max(6, Math.min(24, Math.floor((W||1728)/F)));
   }
   function cplNow(body){
-    var c=parseInt(STYLE_CPL||12,10);
-    return Math.max(6, Math.min(cplMax(body?body.clientWidth:1728), c));
+    var W=body?body.clientWidth:1728, cap=cplMax(W);
+    if(STYLE_CPL==='auto') return cap;
+    var c=parseInt(STYLE_CPL,10); if(!c) return cap;
+    return Math.max(6, Math.min(cap, c));
   }
 
   function layoutArticle(silent){
@@ -327,7 +337,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
       : ('第 '+(A.pageIndex+1)+' / '+A.pageCount+' 屏 · 全篇 '+A.totalLines+' 行');
     if(!silent && BC) BC.postMessage({kind:'pageMap', idx:S.article.idx, unit:A.unit,
       pageIndex:A.pageIndex, pageCount:A.pageCount, sectionIndex:A.sectionIndex,
-      sectionCount:A.sectionCount, viewLines:A.viewLines, charsPerLine:STYLE_CPL});   // 7 字段协议：totalLines 不上行
+      sectionCount:A.sectionCount, viewLines:A.viewLines});   // 恒 7 字段：totalLines / charsPerLine 都不上行
   }
 
   function stepArticle(dir, steps){
@@ -433,7 +443,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     var wrap=document.querySelector('#content .cast'); if(!wrap) return;
     var p=wrap.querySelector('.paper'); if(!p) return;
     var setPx=parseFloat(document.documentElement.style.getPropertyValue('--cds-font-size'))||72;
-    setPx=Math.max(24, Math.min(120, setPx));
+    setPx=Math.max(24, Math.min(160, setPx));
     var px=setPx, guard=0;
     p.style.fontSize=px+'px';
     while(p.scrollHeight > p.clientHeight+1 && p.clientHeight>0 && guard++<40){
