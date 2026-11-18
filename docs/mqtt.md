@@ -2,7 +2,7 @@
 
 ## 📋 文档信息
 
-- **版本**: V2.2.32（V2.2 基线 + V2.2.1…V2.2.32 订正，见 §9 变更记录）
+- **版本**: V2.2.33（V2.2 基线 + V2.2.1…V2.2.33 订正，见 §9 变更记录）
 - **更新日期**: 2026-11-18
 - **Broker**: EMQX Cloud
 - **传输**: MQTT 5.0 over WebSocket (WSS)
@@ -66,6 +66,8 @@ QoS     : 1
 1. **主题段一律用 `userId` / `deviceId`，禁止使用控制码。** 控制码在本版之后是**长期口令**（不自动过期，只在控制端手动刷新时更换）：写进 topic 等于向所有订阅者广播口令，retained 还会把它长期留在 broker 上；ACL 目标态也写不出稳定规则（码一换，规则全要跟着改）。旧形状 `cds/v1/{deviceCode}/...` **已作废**（`deviceCode` 降为历史列，落库口径见 见 `migrations/0005_control_codes_and_styles.sql`（rev2 定稿；**DDL 不在本仓库**，由运维维护，sha256 与 promote 状态以 `migrations/README-0005.md` 台账为准）：`control_codes(user_id, code, rotated_at)` + `device_bindings(device_id, user_id, bound_at, revoked_at)`）。
 2. **`cmd` 共用一条**：一个控制端控同户全部屏，`cds/v1/u/{userId}/cmd` 广播即达。
 3. **`state` / `presence` / `ack` 必须每屏一条叶。** `state`、`presence` 都是 `retain=true`，共用一条即**后写覆盖**——`layout.availW` 随屏而异（1280→1152 / 1920→1728），共用后只剩最后一台的几何，另一台必然踩 §4.6 的静默 `clamp`（锁 24 被收回 18）；`presence` 的 LWT 每连接一条，共用时一台断线即整户判离线。`ack` 共用则必须往 payload 里塞 `deviceId`（改 `ack` 形状），且回执来源无法从主题判定。
+
+**`{userId}` 可以是 guest 的归属键（V2.2.33）**：未登录控制端（`api.md` §4.8）的 `ownerId` 形如 `g_` + 16 位小写 hex，主题形状**一字不变**（`u/{ownerId}/…`）。实现**不得**按「像不像用户名」校验或拒绝它——那会让屏发布到 `u/g_…/state/…` 而控制端订阅不到（或反之），症状是「控制端在线、屏也在发，但两边看不到对方」。guest **不需要 broker 账号**：broker 侧用的是共享口令（§1.1）。红线不变——`{userId}` 必须是归属键，**不得**是控制码、不得是 guest 凭证。
 
 ```
 cds/v1/u/{userId}/cmd                 服务端/控制端 → 同户全部屏  账户级指令（`to` 定向） QoS1, retain=false
@@ -651,6 +653,7 @@ cds/v1/d/{deviceId}/bind              服务端 → 显示端           绑定�
 
 ## 9. 变更记录
 
+- **V2.2.33 (2026-11-18)**：**主题段 `{userId}` 允许 guest 归属键（只加一句口径，零主题／零字段／零 QoS 变更）**。起因：`api.md` V2.2.14 新增未登录控制端，`ownerId = 'g_'+16hex` 会成为 `device_bindings.user_id`，其主题自然是 `u/g_…/…`。不写明的话，实现很容易在「`userId` 只可能是用户名」的假设上加校验，症状是「控制端连上了、屏也在发，但两边看不到对方」——与 V2.2.23 之前共用叶节点那类静默失效同型。① `{userId}` ＝ 归属键：用户名 或 `g_`+16hex，**不得**是控制码、不得是 guest 凭证（红线不变）；② guest 走共享 broker 口令，不需要 broker 账号；③ **未动**：主题树形状、`retain`/QoS、`device.bindState` 字段表、`reason` 三值、`state.report`、§4.6 全部算术与六格表。
 - **V2.2.32 (2026-11-18)**：**`castOverflow` 降级为「仅诊断」＋屏端自解绑入口的协议边界**（Jeremyzh 21:57 两件裁决，经 Chief 21:57 转达；只动本文件，`api.md`/`database.md` 与原型零字节）。① **板书溢出控制台不提示**：`state.report.castOverflow` **保留字段名与语义**（＝超出可视区、能往下滚且确实需要滚），但**仅作可观测量/诊断**——控制台不得据此弹提示、不得据此改值/回滚、不得在未上报时推断溢出；唯一允许消费方＝验收/诊断核对「是否如实上报」。补「防复发」理由：做成提示后它会变成第二套「装不下」判定，与页面自己算的结论冲突时无从裁决。（同源修正：产品侧验收/设计里若有「castOverflow 提示」类判据，须改为「不得提示」。）② **屏端自解绑＝右下角不可见热区长按 3 秒 + 二次确认 → `POST /devices/me/release`**（§4.6.5 ⑮）：**协议侧零新字段**（确认态不下发不上报）；`released:false` 仍须跳回输码页并视作已解绑；确认期间收到 `state:'revoked'` 快照则关框回输码页、不再发请求；长按须可被 `pointermove`/滚动取消，且**命中滚动条轨道时不计时**（板书滚动条与右下角热区重叠）。**未动**：`castOverflow` 的字段名与上报时机、`device.bindState` 字段表、`reason` 枚举（`code_rotated`/`kicked`/`unbind`）、§4.6 全部算术与六格表、`pageMap` 七字段、`layout` 五项、`ack.effective` 按场景给键、`scene` 四值、§4.6.6 三档。
 - **V2.2.31 (2026-11-18)**：**§1 的 DDL 指针改为「文件名＋运维台账」（只改一处措辞，零字段／零主题变更）**。原文「落库口径见 `migrations/0005` 的 rev2 草案」：`migrations/` 里那份 `0005` 是**旧模型**且已被运维移入 `docs/changes/superseded/`，同时本仓库不含 `migrations/` 目录 ⇒ 该指针在两侧都解析不到现行件（在运维本地解析到的是废止件，在仓库内则无处可解）。改为 `migrations/0005_control_codes_and_styles.sql`（rev2 定稿；DDL 不在本仓库，由运维维护，sha256 与 promote 状态见 `migrations/README-0005.md`）。同源修正：`database.md` V2.2.2、`api.md` V2.2.12。**未动**：主题形状与 `to`、`device.bindState` 字段表、`reason` 枚举（`code_rotated`/`kicked`/`unbind`）、§4.6 全部算术与六格表、`pageMap` 七字段、`layout` 五项、`c > 0 && c×F ≤ W`。
 - **V2.2.30 (2026-11-18)**：**Jeremyzh 21:40 四条新裁决（板书改竖向滚动／歌词改连续纵向居中／歌词配色定死／屏端自解绑另见 `api.md` V2.2.10）**（经 Chief 21:40 转达；本文件只改 mqtt 侧，原型仍冻结）。① **板书 `overflow:hidden` → `overflow-y:auto`**（推翻 V2.2.27 ④）：原话「板书装不下的时候，可以出现竖向滚动条」；仍**不得**自动缩字、`effective` 仍恒等设定值。补三条实现约束：`scrollbar-gutter:stable` 防「滚动条出现 ⇒ 宽变窄 ⇒ 换行增多 ⇒ 更高」的自反馈；换内容必 `scrollTop=0`；滚动条不得隐藏。`castOverflow` 保留原名、语义改「超出可视区、可滚」。② **歌词「按页切」作废、改连续纵向居中**（推翻 V2.2.28 ③）：当前行恒在中心，`transform` 定位、**删 `pageIndex`**、首尾行用上下留白（不用 `clamp`）、渲染 ≥`N+2`、动画只动 `transform`；`N` 降级为「可视窗口行数」，不得切页。并补一条 V2.2.28 没算到的后果：padding 未删时步进差 `0.1em`，连续滚动下误差**随行号线性累积**（第 60 行偏 ≈1.5 行），比按页切时严重得多。③ **歌词配色定死**：`lyricFg` 整段、当前行不透明度 1.0、非当前行 **0.55 固定（不是字段）**、`lyricAccent` 缺省＝`lyricFg`（**默认不启用第二种颜色**）；0.55 达不到 3:1 时（浅底）单调上调到最小达标值，且不得低于 0.55——「固定常数」与「≥3:1」不冲突，是因为下限可以单向抬高。④ **`reason` 拼写订正**：本文件原写 `unbound`、`api.md` §4.6 写 `unbind`，同一字段两个拼写；统一 **`unbind`**，`unbound` 只是 `state` 取值（且本快照 `state` 只有 `bound`/`revoked`）。该值自 V2.2.30 起在 `api.md` §4.3.1（屏端自解绑）有了生产者。⑤ **全屏＝视口变化**：双击全屏后必须重测 `layout` 并重分页 `pageMap`（§4.6.5 ⑭）。**未动**：字段表范围与默认、`ack.effective` 按场景给键、`scene` 四值、§4.6.1 `L(k)`、§4.6.3 六格表、`pageMap` 七字段、`layout` 五项、`c × F ≤ W` 与 `clamp` 口径、主题形状、`to`、§4.6.6「整章一屏」三档。
