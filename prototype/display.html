@@ -365,7 +365,10 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
       px-=4; if(px<24){ px=24; break; }                    // 步长 4，不静默跨档
     }
     content.style.setProperty('--cds-font-size', px+'px'); layoutArticle(true);
-    sendStyleApplied('整章一屏：实际字号 '+px+'px（步长 4）');
+    if(BC) BC.postMessage({kind:'pageMap', idx:S.article.idx, unit:A.unit,
+      pageIndex:A.pageIndex, pageCount:A.pageCount, sectionIndex:A.sectionIndex,
+      sectionCount:A.sectionCount, viewLines:A.viewLines, charsPerLine:STYLE_CPL});
+    sendStyleApplied('整章一屏：实际字号 '+px+'px（步长 4）');   // effective 只走 styleApplied，不进 pageMap
     sys('整章一屏：实际字号 '+px+'px（按步长 4 下调）', false, 3200);
   }
 
