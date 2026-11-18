@@ -2,7 +2,7 @@
 
 ## 📋 文档信息
 
-- **版本**: V2.2.26（V2.2 基线 + V2.2.1…V2.2.26 订正，见 §9 变更记录）
+- **版本**: V2.2.27（V2.2 基线 + V2.2.1…V2.2.27 订正，见 §9 变更记录）
 - **更新日期**: 2026-11-18
 - **Broker**: EMQX Cloud
 - **传输**: MQTT 5.0 over WebSocket (WSS)
@@ -282,6 +282,7 @@ cds/v1/d/{deviceId}/bind              服务端 → 显示端           绑定�
   "v": 1, "msgId": "d-07", "ts": 1763350000000, "type": "state.report",
   "payload": {
     "online": true,
+    "scene": "music",
     "nowPlaying": { "type": "music", "id": "f3f9...", "positionMs": 42500, "isPlaying": true, "volume": 50 },
     "viewing": { "volumeId": 18, "chapterSn": 3, "anchorVerseSn": 12 },
     "pageMap": { "anchor": { "verseSn": 12, "charOffset": 0 }, "pageIndex": 2, "pageCount": 12,
@@ -293,6 +294,8 @@ cds/v1/d/{deviceId}/bind              服务端 → 显示端           绑定�
 }
 ```
 - 音乐每 5s 或状态变化时上报；文章阅读只在章节切换或位置变化时上报（不做进度同步）
+- **`scene` 必填（V2.2.27）**：`article`|`music`|`cast`|`standby`，显示端**当前可见**场景。没有它，控制台不知道「现在改的是哪一套样式」（§4.6.7 ①），只能从 `nowPlaying`/`viewing`/`casting` 猜；猜错就会把整段字色写到另一个场景。旧实现未带 ⇒ 控制台按三者推断并标「场景未知」，**不得**默认 `article`。
+- **`castOverflow` 可选（V2.2.27）**：`cast` 且板书文本层超出可视区 ⇒ `true`。板书不降档（§4.6.7 ④），裁切是预期行为，此字段只作提示，不参与任何自动改值；未定义字段按「未上报」处理（前向兼容）。
 - **`playback_state` 的写入路径唯一（V2.2.7 订正）**：只有控制页的 REST 播放控制（`play`/`pause`/`seek`/`stop`）可以写；`state.report` **只用于展示与对账**，服务端**不得**用它的 `nowPlaying` 回写 `playback_state`。原文「分流写入」与 §4.1「`playback_state` 只由控制页的播放控制写入」自相矛盾；且现网共享口令下任意第三方都能向该 topic 发 **retained** report（§7 实测），回写等于把全站播放状态交出去。阅读位置（`viewing`）照旧不入 `playback_state`，见 API 3.5。
 - **过期上报必须丢弃（手机端必需）**：控制端可能是手机，4G/Wi-Fi 切换会让重连后重发的 `state.report`（§6-2 要求）乱序到达。服务端按 `deviceId` 维护「已处理的最大 `ts`」，**丢弃 `ts` 小于该值的 report**；重复 `msgId` 直接忽略。否则旧位置/旧页号会覆盖新值——典型症状是「手机切回 Wi-Fi 后页码/播放位置倒退几秒」。
 - **`layout`：显示端实测几何 + 生效三参（V2.2.15 新增）**：`{availW, availH, fontSizePx, lineHeight, charsPerLine}`，五项必须取**同一帧**的实测值（`availW`/`availH` ＝ `#content .article .body` 的 `clientWidth`/`clientHeight`，`fontSizePx` 取 `getComputedStyle` 的 px，`charsPerLine` 取 `auto` 派生后的**整数**）。**单屏形态（D-3，显控一体）与多场景显示端同口径，同样必须上报**（V2.2.20 补：原型 `screen.html` 此前只发 `pageMap`，控制台在 D-3 下拿不到几何只能回退 1728 标「估算」）<br>时机：**每次重排之后**各上报一次（`ResizeObserver`/`resize`/旋屏/`fonts.ready`/样式变更/翻页重排；同屏 200ms 内防抖合并），并随周期 `state.report` 一起带。用途**只有一个**：控制台据此算「每行字数上限」——否则只能写死 1728，1280 屏上锁 24 会被显示端静默 `clamp` 回 18。它**不**替代 `online`（在线看 `presence`），也**不**替代 `pageMap`（分页摘要仍 7 字段）。
@@ -354,23 +357,46 @@ cds/v1/d/{deviceId}/bind              服务端 → 显示端           绑定�
 
 ---
 
-### 4.6 `display.style`：字段表 + 分页三参（V2.2.8 起定义）
+### 4.6 `display.style`：字段表 + 分页三参（V2.2.8 起定义；V2.2.27 扩为按场景样式，见 §4.6.7）
 
-服务端→显示端，`cmd`，QoS1，retain=false。`display.style` 自 V2.2.2 起被 §4.2 引用，但直到本版才在本文档里定义字段（此前是**悬空引用**：字段只在 `docs/样式下发指令-提案.md` 与 `前端设计-V2.1`）。
+服务端→显示端，`cmd`，QoS1，retain=false。`display.style` 自 V2.2.2 起被 §4.2 引用，但直到 V2.2.8 才在本文档里定义字段（此前是**悬空引用**：字段只在 `docs/样式下发指令-提案.md` 与 `前端设计-V2.1`）。**V2.2.27 起扩为「按场景样式」**（Jeremyzh 21:09 ②③④，字段见下表与 §4.6.7）。
 
 ```json
-{ "type": "cmd", "payload": { "kind": "style", "payload": {
-    "fontSizePx": 72, "lineHeight": 1.75, "charsPerLine": "auto" } } }
+{
+  "v": 1, "msgId": "m-31", "ts": 1763350000000, "to": "*", "type": "display.style",
+  "payload": { "scene": "article", "styleVersion": 7,
+               "fontSizePx": 72, "lineHeight": 1.75, "charsPerLine": "auto",
+               "fg": "#e8ecf2", "bg": "#000000",
+               "fontFamily": { "ui": "system-ui", "body": "song" } }
+}
 ```
+
+```json
+{
+  "v": 1, "msgId": "m-32", "ts": 1763350000500, "to": "*", "type": "display.style",
+  "payload": { "scene": "music", "styleVersion": 3,
+               "lyricFontSizePx": 56, "lyricFg": "#ffffff", "lyricAccent": "#8ab4f8" }
+}
+```
+- **示例订正（V2.2.27）**：旧示例写作 `{ "type": "cmd", "payload": { "kind": "style", "payload": {…} } }`，与 §3「`type` ＝ `域.动作`、`payload` 直接是消息体」**冲突**——`cmd` 不是消息类型（§3 里 `cmd` 是 topic 段），`kind` 不是包络字段。按 §3 只能写成 `type: "display.style"`、`payload` 直接是样式对象。同一文件两套包络，实现者按哪套都能说通，故本版一并订正。
 
 | 字段 | 范围 / 步长 / 默认 | 语义 |
 |---|---|---|
 | `fontSizePx` | 24–160 / 4 / **缺省＝派生 `round4(视口高 × 6.7%)`** | 字号主控，px 直写 `--cds-font-size`；越界 `clamp(24,160)`，非 4 倍数**向下**取整。派生默认：720p **48** / 1080p **72** / 1440p **96** / 2160p **144**；派生结果必须进 `ack.effective`（服务端不知道屏高，**不得代算**） |
 | `lineHeight` | 1.2–2.2 / 0.05 / **1.75** | 只改行高；**段距固定 `1.1em`（em = `fontSizePx`）**，故行距也在改「段距占几行」（1.75→0.63 行、1.2→0.92 行） |
 | `charsPerLine` | **`"auto"` 或 6–40 整型 / 1 / 默认 `"auto"`（省略即 auto）** | 每行字数。`"auto"` ⇒ 显示端按 `N = clamp(6, 24, floor(W ÷ fontSizePx))` **自动派生**（`W = .body.clientWidth`；1920 宽扣左右 5vw＝1728px ⇒ 72px 时 N=**24**，正好满行）；显式整数 ⇒ 老师**锁定**，跨屏/跨字号不变，但受 `c × F ≤ W` 收紧（越界一律 `clamp`）。<br>**三个上限必须分清，不得混写成一个数**：① **硬约束** `c × F ≤ W`（算术，`floor(1728 / F)`：24px→72、72px→**24**、96px→18、120px→14、144px→12、160px→10）；② **`auto` 的可读性上限 24**——`auto` 永不返回 >24，即使 ① 允许 72（24px 字号那档）；③ **显式值的协议容错 ≤40**——为旧载荷/第三方客户端保留，UI 量程建议 **6–24**；显式传 25–40 时显示端仍接受（只要满足 ①），但 `ack.note` 应提示「超出可读性建议」 |
+| `scene` | **`article`（缺省）\| `music` \| `cast` \| `standby`** / — / **`article`** | **这一包样式属于哪个场景**（V2.2.27）。缺省 `article` ⇒ 旧载荷（无 `scene`）行为**逐字不变**。显示端**按场景分缓存、只在该场景生效**，切场景先套该场景缓存（从未收过 ⇒ 派生默认）；详见 §4.6.7 ①。四值必须与 `0005` 的 `scene_styles.scene` 注释同源（`standby`/`music`/`article`/`cast`）——只写三值会「存得进、读不回」。未知值 ⇒ **整包不应用** + `ack{ok:false, code:4002, reason:"invalid_style_field"}`（`scene` 决定写哪份缓存，猜错＝把歌词尺寸写进文章） |
+| `styleVersion` | 整型，单调递增 / — / 服务端生成 | 幂等键：`<=` 已应用版本 ⇒ 直接 `ack ok`、**不重写**任何 CSS 变量。**服务端生成，显示端不得自增**（多终端各写各的版本会让幂等失效）。落库列 `scene_styles.style_version` |
+| `fg` | `#rrggbb`（6 位十六进制，**仅此一种**）| 前景/正文色，直写 `--cds-fg`。**不接受** `rgb()`/`hsl()`/颜色名/`var()`/任意字符串——这个值会被拼进 CSS 自定义属性 |
+| `bg` | `#rrggbb` | 画布底色，直写 `--cds-bg`。`cast` 的图片/PDF 上**不得**叠该色，见 §4.6.7 ⑤ |
+| `fontFamily.ui` | 枚举 **`system-ui`\|`sans`\|`serif`\|`hei`\|`song`\|`kai`** | 界面字体（页眉、页码、节号、码格），直写 `--cds-font-ui`。**不收任意字符串**：本地没装的字体会静默 fallback，看起来像「样式没生效」，且无法在服务端预检 |
+| `fontFamily.body` | 同上（六值） | 正文/经文/板书字体，直写 `--cds-font-body`。与 `ui` 可分设（UI 用无衬线、正文用宋体是常见配） |
+| `lyricFontSizePx` | 12–120 / 4 / **缺省＝`round4(fontSizePx × 0.78)`** | **歌词独立字号**（Jeremyzh 21:09 ②），直写 `--cds-lyric-size`。此前是 `calc(var(--cds-font-size) × .78)` 硬编码（`prototype/display.html` L55），改歌词字号必须连正文一起改；本字段把它拆开。缺省保持现观感（1080p 72px ⇒ **56px**）；显式时 `clamp(12,120)`、非 4 倍数**向下**取整 |
+| `lyricFg` | `#rrggbb` | **整段**歌词字色（Jeremyzh 21:09 ③）：作用于**全部行、含当前行**，直写 `--cds-lyric-fg`。**不提供**逐行/局部着色 |
+| `lyricAccent` | `#rrggbb`，可选 | **仅当前行**强调色，直写 `--cds-lyric-accent`。**缺省＝`lyricFg`**（整段真正同色）；要「当前行更亮」必须**显式**下发，未下发时**不得**自动提亮 |
 | `fontScale` | **作废** | **已作废（V2.2.13，产品 2026-11-18 12:44 宣布）**：收到一律**忽略**并在 `ack` 的 `note` 记 warn；**不得**再当乘数（乘两次 72×1.15=82.8，且越出 4 的步长网格）。旧载荷按「忽略 `fontScale`，沿用本机已生效 `fontSizePx`」处理 |
 
-- **三参任一变更**：显示端必须**重排**并**重发 `pageMap`**；`pageCount`/`viewLines` 是「当前样式下」的量，样式一变旧值立即作废，不得跨样式复用；控制台只读上报、不得自算。原型缺这条（`kind==='style'` 只 `applyStyle`＋toast、不重算 `pages`）＝**验收必挂**。
+- **本场景任一字段变更**（`article` 的三参、`music` 的歌词两值/字号、`cast` 的字号）：显示端必须**重排**并**重发 `pageMap`**；`pageCount`/`viewLines` 是「当前样式下」的量，样式一变旧值立即作废，不得跨样式复用；控制台只读上报、不得自算。原型缺这条（`kind==='style'` 只 `applyStyle`＋toast、不重算 `pages`）＝**验收必挂**。
 
 - **字号默认也是派生量（V2.2.12，对齐产品 V2.1.11）**：`fontSizePx` 缺省时，显示端按 **`round4(视口高 × 6.7%)`** 派生（720p 48 / 1080p 72 / 1440p 96 / 2160p 144），显式下发时按 24–160／步长 4 收口。派生由**显示端**做，原因同 `charsPerLine`：服务端不知道屏高。这与「字号固定 72」的旧口径不同——旧口径在 4K 上只占屏高 5.56%，1080p 是 7.11%，同一个老师换屏就换观感。
   - **输入口径（V2.2.14 定稿：视口 CSS 高）**：按**视口 CSS 高**（`window.innerHeight`）派生——投屏全屏时等于屏高，与产品「按屏高派生」一致；窗口化预览（控制页同屏看）时按窗口高，会得到更小的字号，这正是分页应当跟着变的情形（§4.6 已定「`W`/三参任一变化都要重排重发 `pageMap`」）。**已定（V2.2.14）**：取视口高，不取物理屏高——CSS 只能知道 viewport，用物理屏高会在窗口化时溢出屏幕。控制台的预览区必须标注「**预览按窗口高派生，投屏以显示端实测为准**」，避免把预览字号当成投屏字号。**不得保留两套**（一套视口、一套物理屏），否则控制台预览与投屏会给出两套屏数，看起来像时基/分页 bug。
@@ -378,7 +404,7 @@ cds/v1/d/{deviceId}/bind              服务端 → 显示端           绑定�
 - **`auto` 为什么是默认（V2.2.10，Jeremyzh 12:36 方案 A）**：投屏可能是 1080p / 2K / 4K，同一个字号在不同屏宽下的「合理每行字数」不同。固定 12 在 1080p 上只用到可用宽的 50%，在 2K 上更窄；`auto` 让**每行字数跟着字号与屏宽走**，老师不用先量屏。派生式在显示端算——**服务端不知道 `W`，不得替它算 `N`**。
 - **上限 24 是可读性底线，不是技术限制（必须写清，否则下一轮会有人放开到 72）**：24px 字号下 `floor(1728÷24)=72`，技术上能排 72 字，但一行超 24 个全角字，后排视线跟行会跳行。所以 `auto` 的上限固定 24，与字号无关；**不要**把它改成 `floor(W÷F)` 的裸结果。
 - **显式整数（老师手动锁定）**：锁定后跨屏、跨字号都不变——换到 2K 屏仍是这 40 字（若 `c × F > W` 则被 `clamp` 收到 `floor(W÷F)`）。锁定的代价是**跨屏一致性消失**：同一份文档在 1080p 与 2K 上的行数、屏数都会不同（§4.6.3 有对照）。
-- **`c × F ≤ W` 只能由显示端执行**：服务端既不知道 `W` 也不知道 `F`，无法校验；`display.style` 的 `ack` 因此**必须回带生效值** `effective: {fontSizePx, lineHeight, charsPerLine}`（`auto` 回派生出的整数），否则控制台会以为请求生效了。`effective` 只出现在 `ack` 里，**不进 `pageMap`**（`pageMap` 恒 7 字段）。<br>**几何不进 `effective`，走 `state.report.layout`（V2.2.15 定稿，撤销 V2.2.14 的 5 字段版）**：`availW`/`availH` 随**每次重排**变化（换屏、旋屏、翻页重排、滚动条出现），与「是否刚下发过 `display.style`」无关；塞进 `ack` 只能覆盖「刚下发样式」这一种情形，且可能在重排完成前报到旧值。故两者分家：**`effective` ＝ 三条样式值的生效结果；`layout` ＝ 几何实测**。不得再把 `availW`/`availH` 塞回 `effective`（同一事实写两处，必然一边过期一边新，实现者无从取舍）。
+- **`c × F ≤ W` 只能由显示端执行**：服务端既不知道 `W` 也不知道 `F`，无法校验；`display.style` 的 `ack` 因此**必须回带生效值** `effective: {fontSizePx, lineHeight, charsPerLine}`（`auto` 回派生出的整数），否则控制台会以为请求生效了。**V2.2.27 起按场景给键**：`article` 仍是这三值（V2.2.16 口径不变），`music`/`cast`/`standby` 见 §4.6.7 ②——不得给无意义的场景编造数值。`effective` 只出现在 `ack` 里，**不进 `pageMap`**（`pageMap` 恒 7 字段）。<br>**几何不进 `effective`，走 `state.report.layout`（V2.2.15 定稿，撤销 V2.2.14 的 5 字段版）**：`availW`/`availH` 随**每次重排**变化（换屏、旋屏、翻页重排、滚动条出现），与「是否刚下发过 `display.style`」无关；塞进 `ack` 只能覆盖「刚下发样式」这一种情形，且可能在重排完成前报到旧值。故两者分家：**`effective` ＝ 三条样式值的生效结果；`layout` ＝ 几何实测**。不得再把 `availW`/`availH` 塞回 `effective`（同一事实写两处，必然一边过期一边新，实现者无从取舍）。
 
 - **控制台的「每行字数上限」必须用 `state.report.layout.availW` 算，不得写死 1728（V2.2.15）**：`c_max = min(24, floor(availW ÷ fontSizePx))`，`availW` 与 `fontSizePx` **必须取同一条 `layout`**（拿新宽度配旧字号会算出上限虚高）。写死 1920 屏的可用宽会在 1280/1640 屏上给出过大的上限——1280 屏 `availW≈1152`、72px 时真上限 **16**（`floor(1152÷72)`；V2.2.16 订正，原写 18 是 `floor(1728÷96)` 那行串档——照 18 实现会多排 2 字、行尾被 `overflow:hidden` 静默裁掉），控制台却允许选 24，显示端再 `clamp` 回 16，等于**锁了没生效**（静默改值，与「两次乘字号」同类错误）。同窗口的默认档另算：1280×800 派生字号 `round4(800×6.7%)=52`，`floor(1152÷52)=**22**`——**断言必须写清用哪档字号**（显式 72 ⇒ 16；默认 auto ⇒ 22），只写「1280 屏上限 18」两头都不对。控制台未连显示端时按 1920 估算，但必须标注「估算」。<br>**原型的承载方式（V2.2.16 备案，避免被读成「两套字段」）**：`prototype/display.html` 用 BroadcastChannel 的 `styleApplied`（＝`ack.effective`，三值）与 `layoutMetrics`（＝`state.report.layout`，五项）搬运同一结构，字段名与协议一致；上 MQTT 后分别落在 `ack.effective` 与 `state.report.layout`，**不是两套**。单屏/显控一体原型 `prototype/screen.html` 同样发 `layoutMetrics`（五项同形，200ms 防抖）与 `styleApplied`（＝`ack.effective`，V2.2.20），D-3 下控制台不必回退 1728、也能判出样式是否被收紧。
 - **`W` 或三参任一变化**（`ResizeObserver` / 旋屏 / 换屏）⇒ 重测 → 重算分页 → **重发 `pageMap`**。
@@ -452,7 +478,13 @@ cds/v1/d/{deviceId}/bind              服务端 → 显示端           绑定�
 
 #### 4.6.5 待产品
 
-① ~~`charsPerLine` 范围~~（V2.2.9 已定 **6–40/1/12**）→ **V2.2.10 修订：默认改为 `"auto"`**，`前端设计-V2.1`（默认 12）与 `验收清单-V2.1`（L120 的 12 字/行表、L205 的 `viewLines=4`）都按 12 写死了算例，**须同步重算**（1080p 默认派生 24 ⇒ 9 行 / 2 屏 / 首屏 5 行，`viewLines=5`）；② 列宽语义（居中窄栏 vs 撑满）；③ ~~`fontScale` 作废或保留~~（**已闭合**：V2.2.13 产品宣布作废、协议同步）；~~⑤ 字号派生默认的输入口径~~（**V2.2.14 闭合**：取**视口 CSS 高**，见 §4.6 派生段；控制台预览须标注「预览按窗口高派生，投屏以显示端实测为准」）；**⑦（V2.2.14 新增）「整章一屏」须按 §4.6.6 的三档顺序改写**（`前端设计-V2.1` L398、`前端设计-V2.1-变更单` §4.8 表现写「只降字号」）；**⑥（V2.2.12 新增）UI 字号上限须能到 144**（4K 满行值，见 §4.6.4），若产品 UI 仍封在 120，请在文档里写明「4K 上宽不留白」不是本版要求；④ 把 `fontSizePx`/`lineHeight`/`charsPerLine` 补进 `样式下发指令-提案.md` 并对齐本表。在并入前，实现一律以本表与 `前端设计-V2.1` 为准，不得两边各写一套。
+① ~~`charsPerLine` 范围~~（V2.2.9 已定 **6–40/1/12**）→ **V2.2.10 修订：默认改为 `"auto"`**，`前端设计-V2.1`（默认 12）与 `验收清单-V2.1`（L120 的 12 字/行表、L205 的 `viewLines=4`）都按 12 写死了算例，**须同步重算**（1080p 默认派生 24 ⇒ 9 行 / 2 屏 / 首屏 5 行，`viewLines=5`）；② 列宽语义（居中窄栏 vs 撑满）；③ ~~`fontScale` 作废或保留~~（**已闭合**：V2.2.13 产品宣布作废、协议同步）；~~⑤ 字号派生默认的输入口径~~（**V2.2.14 闭合**：取**视口 CSS 高**，见 §4.6 派生段；控制台预览须标注「预览按窗口高派生，投屏以显示端实测为准」）；**⑦（V2.2.14 新增）「整章一屏」须按 §4.6.6 的三档顺序改写**（`前端设计-V2.1` L398、`前端设计-V2.1-变更单` §4.8 表现写「只降字号」）；**⑥（V2.2.12 新增）UI 字号上限须能到 144**（4K 满行值，见 §4.6.4），若产品 UI 仍封在 120，请在文档里写明「4K 上宽不留白」不是本版要求；④ ~~把 `fontSizePx`/`lineHeight`/`charsPerLine` 补进 `样式下发指令-提案.md` 并对齐本表~~ → **V2.2.27 处置**：不补提案，改以**本表为唯一权威**，提案中本期不并入的字段与理由见 §4.6.7 ⑥。在并入前，实现一律以本表与 `前端设计-V2.1` 为准，不得两边各写一套。
+⑧ **（V2.2.27 新增）产品侧两处「板书降档」口径须删**：① `前端设计-V2.1` L224「装不下时按**步长 4** 逐档下调并回报实际生效值」；② `prototype/display.html` L86 注释与 L637 `fitCast()` 的 `while(scrollHeight>clientHeight){px-=4}` 循环、以及 `console.html` L921/L946 的 `effectivePx` 消费。Jeremyzh 21:09 ①「板书不要再自动缩小，设多大就多大」⇒ 裁切、`effective` 恒等设定值（§4.6.7 ④）。**原型冻结中，由产品改**。
+⑨ **（V2.2.27 新增）`state.report.scene` 必填后，原型与验收须同步**：`display.html`/`screen.html` 的 `state.report` 与 `layoutMetrics` 都要带当前场景；验收若无该字段只能从 `nowPlaying`/`viewing`/`casting` 推断，判据要写明「推断」而非「实测」。
+⑩ **（V2.2.27 新增）`--cds-font-ui` 尚未落地**：`applyStyle()` 只写了 `--cds-font-body`（`prototype/display.html` L178–180），`fontFamily.ui` 目前是「协议有、实现无」。CSS 里 `--cds-font-ui` 只有默认值，不会报错，属**静默不生效**。
+⑪ **（V2.2.27 新增）「当前行高亮」是否默认开启**：`lyricAccent` 缺省＝`lyricFg` ⇒ 整段同色（③ 的字面要求）。若要保留现原型的「当前行用强调色」，控制台必须显式下发 `lyricAccent`；默认值要不要反过来，需一句裁决。
+⑫ **（V2.2.27 新增）歌词每屏行数是否上报**：`N = floor(可用高 ÷ (歌词字号 × 1.5))` 由布局决定，本版**不进协议、不上报**；若控制台要显示「歌词第 3/8 屏」，需另立字段（不得让控制台自算——同 §4.2「屏容量不得用公式算」）。
+
 #### 4.6.6 「整章一屏」的三档顺序（V2.2.14，Jeremyzh 12:43 定）
 
 「整章一屏」（`pageCount > 1` 时出现）＝把当前这一章压到一屏。**降档顺序写死，不得只降字号**：
@@ -466,6 +498,53 @@ cds/v1/d/{deviceId}/bind              服务端 → 显示端           绑定�
 - 每降一档都要**重新分页并重发 `pageMap`**（§4.6 通则），控制台只读上报、不得自算；
 - 三档都到最小值仍 `pageCount > 1` ⇒ **全部回滚**到点击前的三参，如实回报「已到最小（行距 1.2 / 字号 24）仍 N 屏，未改样式」——**不许留半套样式**（半套会让老师以为样式下发成功）；
 - 改动生效后必须走 `ack.effective` 回报三值，控制台显示「生效 行距 x.xx / 字号 Npx / 每行 N 字」（`前端设计-V2.1` L398 现写「只降字号」，V2.1.12 须改；原型 `fitOnePage` 已按本顺序实现）。
+
+#### 4.6.7 按场景样式（V2.2.27：Jeremyzh 21:09 四条裁决）
+
+**背景**：`display.style` 到 V2.2.26 只有三个排版量（`fontSizePx`/`lineHeight`/`charsPerLine`），而 21:09 的四条裁决里，② 歌词独立字号、③ 歌词字色给整段、④ 图片/PDF 不接受背景色控制，都要求**按场景分开的字段**；③④ 的前提是「面板统一控制」——同一个面板切到哪个场景就改哪一套。存储侧 `scene_styles(owner_user_id, scene, style_json, style_version, updated_at, updated_by)` 早已是 6 列、`(owner_user_id, scene)` 主键，协议此前**没有 `scene`**，等于「存得下、发不出去」。
+
+**① `scene` 决定语义，不只是标签**：一包样式写的是**某一个场景**的样式。显示端必须**按场景分开缓存**（本地键 `cds.style.<scene>`，或单键内按场景分映射），**只在该场景生效**；切场景时先套该场景缓存，从未收到过该场景样式 ⇒ 用派生默认。
+- **不得**把歌词字号/字色写到 `article` 用的同一组变量上——切回文章会带上歌词尺寸。同一组 CSS 变量被两个场景争用，是「锁了没生效」的另一种形态（与 §4.6 打的静默 `clamp` 同类）。
+- **不得**用 `article` 的 `charsPerLine` 约束板书（板书没有「每行字数」这个概念）。
+- 未知 `scene` ⇒ **整包不应用**（`4002`）：它决定写哪份缓存，猜错等于把歌词样式写进文章，比整包拒绝更难查。
+- `ack.payload` 增 **`scene`**（回带本条针对哪个场景），控制台据此把「生效」写回对应面板，而不是一律写到文章面板。
+
+| `scene` | 生效字段 | 备注 |
+|---|---|---|
+| `article`（缺省）| `fontSizePx` `lineHeight` `charsPerLine` `fg` `bg` `fontFamily` | 与 V2.2.26 **逐字一致**（旧载荷无 `scene` ⇒ 落这里）|
+| `music` | `fontSizePx` `lineHeight` `lyricFontSizePx` `lyricFg` `lyricAccent` `fg` `bg` `fontFamily` | 歌词三段独立于正文（②③）|
+| `cast` | `fontSizePx` `fg` `bg` `fontFamily` | **无 `charsPerLine`、无降档**（见 ④）|
+| `standby` | `bg` `fg` `fontFamily` | 待机页（时钟/等待）；主题化另裁 |
+
+- 不属于该场景的字段 ⇒ **忽略**并在 `ack.note` 记 warn，**不整包拒绝**（与提案「一个颜色写错不整屏回默认」同口径）。
+
+**② `ack.effective` 按场景给键（不得编造无用值）**：
+
+| `scene` | `effective` |
+|---|---|
+| `article` | `{fontSizePx, lineHeight, charsPerLine}` —— **三值不变**，V2.2.16 口径继续成立 |
+| `music` | `{fontSizePx, lineHeight, lyricFontSizePx}` |
+| `cast` | `{fontSizePx, lineHeight}`（`charsPerLine` 对板书无意义 ⇒ **省略**，不回 `null`/`"auto"`）|
+| `standby` | `{}`（该场景没有排版量，不得编造数值）|
+
+**③ 歌词（21:09 ②③）**：`lyricFontSizePx` 是**独立**字号，替代原型 `calc(var(--cds-font-size) × .78)` 的硬编码（`prototype/display.html` L55）——此前改歌词字号必须连正文一起改。缺省 `round4(fontSizePx × 0.78)`：1080p 派生 72 ⇒ **56px**，与现观感一致。
+`lyricFg` **作用于整段**：全部行、**含当前行**。**不提供**「只给某一行/某个字着色」的字段或路径——③ 的字面要求就是整段一个颜色。
+当前行的强调由 `lyricAccent` 承担，**缺省＝`lyricFg`**（即整段真正同色）。原型现在是「当前行 `--cds-accent`、其余 30% 白」，缺省值一变 ⇒ 若要保留「当前行更亮」，控制台必须**显式**下发 `lyricAccent`；未下发时**不得**自动提亮，否则「整段同色」永远做不到。
+歌词区每屏行数由显示端布局算（`N = floor(可用高 ÷ (歌词字号 × 1.5))`，行距沿用现货 `.lyric` 的 1.5），**不进协议、不上报**：`N` 是布局结果，不是样式参数（同 §4.2「屏容量不得用公式算」）。原型现在是固定 3 行（`LYRICS.slice(cur-1, cur+2)`），改滚动区是产品侧原型工作。
+
+**④ 板书不降档（21:09 ①）**：`cast` 用 `fontSizePx`（＝`--cds-font-size`）作**唯一**字号来源；装不下就**裁**。
+- `.paper` 保持 `overflow:hidden`，超出可视区的部分被裁掉。**不得**按步长 4 逐档下调——V2.1.6 的「装不下按步长 4 降档并回报实际值」**作废**（原话「板书不要再自动缩小，设多大就多大」）。
+- `ack.effective.fontSizePx` **恒等于**下发值（`auto` ⇒ 派生值）。**不再有**「设定 96 实际 72」这种回报——那不是在报告生效，是在报告一次**静默改值**。
+- **裁切是预期行为，不是缺陷**：验收不得以「板书被裁」判失败；反过来，若实现仍自动缩字，**必须判失败**。
+- 控制台需要知道「被裁了」时，用 `state.report` 的可选字段 **`castOverflow: true|false`**（本版新增、可选；仅 `cast` 且文本层超出可视区为 `true`），只用于提示，**不得**据此改回降档。
+- 与 §4.6.6「整章一屏」**不冲突**：那是老师**点按钮**触发的显式动作（只作用于有章/节的 `article`，三档到底会**全部回滚**并如实回报）；本条禁的是「未经操作者同意就改字号」。若把两者读成同一条，老师点「整章一屏」也不再降字号，等于顺带废掉 V2.2.14 的裁决。
+
+**⑤ 板书图片/PDF（21:09 ④）**：`cast.start` 的 `contentType: image|pdf` 时，样式**只**作用于 ①文本层（标题/说明）②画布背景（图片未覆盖的区域）。
+- **不得**把 `bg` 叠到图片/PDF 页面上，**不得**在图上加 `dim` 遮罩。
+- 提案里的 `background.dim`（0–0.8）**本期不并入**，且**不得默认套用**（默认必须 0）——它与「图片/PDF 不接受背景色控制」正面冲突。要「压暗保对比度」必须另立**显式**字段、且只作用于文字层下方条带，需另行裁决。
+- `contentType=image|pdf` 时 `fg` 无文字可着色 ⇒ 忽略、不报错；`bg` 只画在图片未覆盖的背景区。
+
+**⑥ 本表与提案的关系**：`docs/样式下发指令-提案.md`（7,150 B）**不废弃**，但自本版起**本表是唯一权威**（提案是设计稿，未协议化即不可实现）。提案里本期**不并入**：`letterSpacing`（改字宽 ⇒ `c × F ≤ W` 与 §4.6.1/§4.6.3 的分页算术整张失效，要并入必须先重算全表）、`align`（改每行可用宽 ⇒ 同样影响分页，未裁决）、`background.imageUrl/fit/dim`（见 ⑤）、`fgMuted`（未裁决）、`scene.set`（场景由 `cast.start`/`article.*`/`player.*` 驱动，`state.report.scene` 已能观测；独立指令另裁）。
 
 ---
 
@@ -535,6 +614,8 @@ cds/v1/d/{deviceId}/bind              服务端 → 显示端           绑定�
 ---
 
 ## 9. 变更记录
+
+- **V2.2.27 (2026-11-18)**：**按场景样式：`scene`＋歌词独立字号/整段字色＋板书不降档＋图片/PDF 不叠背景色**（Jeremyzh 21:09 四条裁决，经 Chief 21:12 转达；只动协议，原型仍冻结）。① **`scene` 进 `display.style`**（`article` 缺省｜`music`｜`cast`｜`standby`，四值与 `0005` `scene_styles.scene` 注释同源）：按场景**分缓存、只在该场景生效**，切场景先套该场景缓存；未知值整包拒绝（`4002`）。存储侧早就按 `(owner_user_id, scene)` 建表，此前协议无此字段 ⇒ 「存得下、发不出去」。② **新增字段**：`styleVersion`（幂等键、服务端生成）、`fg`/`bg`（`#rrggbb` 唯一格式）、`fontFamily{ui,body}`（六值枚举）、`lyricFontSizePx`（12–120/4，缺省 `round4(fontSizePx×0.78)`，1080p ⇒ 56）、`lyricFg`（**整段**、含当前行）、`lyricAccent`（仅当前行，**缺省＝`lyricFg`**）。③ **`ack.effective` 按场景给键**：`article` 仍三值（V2.2.16 口径不变）、`music` 三值（末位 `lyricFontSizePx`）、`cast` 两值、`standby` `{}`——不得给无意义场景编造数值。④ **板书不降档**：V2.1.6 的「装不下按步长 4 降档并回报实际值」**作废**，改 `overflow:hidden` 裁切、`effective` **恒等**设定值；裁切是预期行为（验收不得据此判失败），仍自动缩字则**判失败**。与 §4.6.6「整章一屏」（用户点按钮、只作用于 `article`、会回滚）**不冲突**。⑤ **板书图片/PDF 不接受背景色控制**：样式只作用于文本层与画布背景，`bg` 不得叠到图上、不得加 `dim`；提案的 `background.dim` **不并入且不得默认套用**。⑥ **顺带订正示例包络**：旧示例 `{type:"cmd", payload:{kind:"style", payload:{…}}}` 与 §3「`type`＝`域.动作`」冲突，改为 `type:"display.style"` + 扁平 `payload`（同一文件两套包络，实现者按哪套都能说通）。⑦ **`state.report` 增 `scene`（必填）与 `castOverflow`（可选）**。⑧ 提案 `样式下发指令-提案.md` 不废弃，但**本表为唯一权威**；`letterSpacing`/`align`/`background.*`/`fgMuted`/`scene.set` 本期不并入（理由见 §4.6.7 ⑥，其中 `letterSpacing` 会整张废掉分页算术）。**未动**：主题形状、`to`、`device.bindState`、§4.6.1 `L(k)`、§4.6.3 六格表、`pageMap` 七字段、`layout` 五项、`c × F ≤ W` 与 `clamp` 口径。
 
 - **V2.2.26 (2026-11-18)**：**收口「无 retained ＝ 从未绑定」与本文件 §6-2「DB 为准」的自相矛盾**（Chief 20:31 复核 V2.2.24 时发现；只动本文件，原型仍冻结）。正文 `device.bindState` 字段表原写「topic 上没有 retained 消息 ＝ 从未绑定」——**无限定词**，而 §6-2 第 3 条又写「不得以『无 retained』直接判未绑定」：同一文件两条相反规则，验收员按字段表判就会把合法在用的屏整批踢回输码页，正是 V2.2.24 刚防住的那类事故。本版统一为**唯一口径**：**「从未绑定」＝ 无 retained **且** REST 自检（API §4.6 `GET /devices/me`）返回 `unbound`**；两者任一表明已绑定 ⇒ 以 DB 为准、由服务端补写快照。同步改了另外三处同源表述：① §4 显示端「收到空 payload」——保留「等同从未绑定」，但补「清库与清 retained 在同一事务内」这一前提，且与 REST 不符时以 DB 为准、不得清本地凭据；② §6-2 第 2 条启动顺序第 ③ 步原写「`revoked` 或无 retained ⇒ 回输码页」——删掉裸判，改为以第 ① 步 REST 结果为准；③ V2.2.23 变更记录里那句「无 retained ＝ 从未绑定」加交叉引用，标明已被本版收窄。**未动**：主题形状、`to`、`device.bindState` 字段集、`reason` 枚举、§4.6 悬挂裁决、`layout` 五项、`pageMap` 七字段、`L(k)`、六格表。
 
