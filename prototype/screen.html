@@ -11,7 +11,8 @@
   --music-bg:#05070d; --music-fg:#eef2fb; --music-accent:#8ab4f8;
   --article-bg:#0a0f14; --article-fg:#f0ece2; --article-accent:#d8c48a;
   --cast-bg:#ffffff; --cast-fg:#111318;
-  --scale:1.15; --lh:1.75;
+  /* V2.1.6：字号以 px 为准（与 display 同一口径）；--scale 只做旧载荷兼容 */
+  --fs:72px; --scale:1.15; --lh:1.75;
   --ui: system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
   --body: "Songti SC","Noto Serif SC",serif;
 }
@@ -47,14 +48,16 @@ body{font-family:var(--ui)}
   padding:5vh 5vw;overflow:hidden}
 .article .head{display:flex;align-items:baseline;gap:14px;font-size:.8rem;opacity:.7;margin-bottom:2.2vh}
 .article .head b{font-size:1rem;opacity:1}
-.article .body{flex:1;font-family:var(--body);font-size:calc(1rem * var(--scale));line-height:var(--lh);min-height:0}
+.article .body{flex:1;font-family:var(--body);font-size:var(--fs);line-height:var(--lh);min-height:0;overflow:hidden;position:relative}
+/* V2.1.6：整章常驻 + 视口起点移动（同一套行流算法，见 display.html） */
+.article .body .flow{position:absolute;left:0;right:0;top:0;will-change:transform}
 .article .body p{margin:0 0 .9em}
 .article .sn{font-size:.62em;opacity:.5;margin-right:.5em;vertical-align:super}
 .article .foot{display:flex;justify-content:flex-end;font-size:.68rem;opacity:.5;min-height:1.4em}
 
 /* ── 板书 ── */
 .cast{flex:1;background:var(--cast-bg);color:var(--cast-fg);padding:6vh 6vw;font-family:var(--body);
-  font-size:calc(1rem * var(--scale));line-height:var(--lh);white-space:pre-wrap;overflow:hidden}
+  font-size:var(--fs);line-height:var(--lh);white-space:pre-wrap;overflow:hidden}
 
 /* ── 迷你控制条 ── */
 #bar{position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(0);z-index:40;
@@ -108,8 +111,10 @@ body{font-family:var(--ui)}
   </div>
   <span class="sep" id="sepA"></span>
   <div class="grp" id="grpArticle">
+    <button data-a="unit" title="切换步进单位：按屏 / 按节（节＝章）">按节</button>
     <button data-a="prev">上一屏</button>
     <button data-a="next">下一屏</button>
+    <button data-a="fit" title="按步长降字号直到整章 1 屏">整章一屏</button>
     <button data-a="present" class="danger" id="presentBtn">投出</button>
   </div>
   <button id="np" class="np" title="点一下停止背景音乐"></button>
@@ -161,52 +166,116 @@ body{font-family:var(--ui)}
   // ── 每个场景各自套样式（切场景原子生效，不出现默认样式帧） ──
   function applySceneStyle(scene){
     var st=S.styles[scene]||{}; var r=document.documentElement.style;
+    // V2.1.6：单屏页也吃 fontSizePx（px），不再用 1rem×scale 那种倍率——倍率算不出「一屏几行」
+    var fpx = st.fontSizePx ? +st.fontSizePx : (st.fontScale ? Math.round(st.fontScale*18) : null);
+    if(fpx) r.setProperty('--fs', Math.max(24, Math.min(120, fpx)) + 'px');
+    if(st.lineHeight) r.setProperty('--lh', st.lineHeight);
     if(st.bg) r.setProperty('--'+scene+'-bg',st.bg);
     if(st.fg) r.setProperty('--'+scene+'-fg',st.fg);
     $('surface').className = (scene==='standby' && S.standby.mode==='blank') ? 'blank' : '';
   }
 
-  // ── 分页：渲染高度实测（⑦） ──
-  var pages=[], pageMapDirty=true;
-  function measurePages(){
-    var a=S.article.items[S.article.idx]||{ch:23};
-    var vs=VERSES[a.ch]||VERSES[23];
-    var body=document.querySelector('.article .body');
-    if(!body) return;
+  // ── 分页 / 步进：整章行流 + 真实几何（V2.1.6）
+  // 不再维护平行 ruler：getBoundingClientRect() 不含 margin，段距会整体丢失——
+  // V2.1.5 在默认 72px 下就裁行（3 个两行节测得 756≤911 通过、实渲染 993.6 → overflow:hidden 静默裁掉最后一行）
+  var A={ready:false, unit:'page', pageIndex:0, sectionIndex:0,
+         totalLines:1, viewLines:1, pageCount:1, sectionCount:0, verseLineIndex:[], lh:126};
+
+  function artBody(){ return document.querySelector('#surface .article .body'); }
+
+  function layoutArticle(silent){
+    var body=artBody(); if(!body) return;
+    var flow=body.querySelector('.flow'); if(!flow) return;
+    flow.style.transform='none';
+    var lh=parseFloat(getComputedStyle(body).lineHeight)||126;
     var H=body.clientHeight; if(H<40) return;
-    // 用不可见的量具，样式与正文完全一致
-    // 量具必须与正文**计算后**的字体/字号/行高完全一致（否则测出来的分页是假的）
-    var cs=getComputedStyle(body);
-    var ruler=document.createElement('div');
-    ruler.style.cssText='position:absolute;visibility:hidden;left:-9999px;top:0;'+
-      'width:'+body.clientWidth+'px;font-family:'+cs.fontFamily+';font-size:'+cs.fontSize+
-      ';line-height:'+cs.lineHeight+';letter-spacing:'+cs.letterSpacing;
-    document.body.appendChild(ruler);
-    var out=[], cur=[], h=0;
-    vs.forEach(function(v){
-      var p=document.createElement('p'); p.style.margin='0 0 .9em';
-      p.innerHTML='<span class="sn">'+v[0]+'</span>'+esc(v[1]);
-      ruler.appendChild(p);
-      var ph=p.getBoundingClientRect().height;
-      if(h+ph<=H){ cur.push(v); h+=ph; return; }
-      if(cur.length){ out.push({verses:cur,cont:true}); cur=[]; h=0; }
-      // 单节高过一屏：按字符二分切分（长段落跨页）
-      var text=v[1], lo=1, hi=text.length-1, cut=hi;
-      while(lo<=hi){
-        var mid=(lo+hi)>>1;
-        p.innerHTML='<span class="sn">'+v[0]+'</span>'+esc(text.slice(0,mid));
-        if(p.getBoundingClientRect().height<=H){ cut=mid; lo=mid+1; } else { hi=mid-1; }
+    var top=flow.getBoundingClientRect().top;
+    var els=[].slice.call(flow.children);
+    A.verseLineIndex=els.map(function(el){ return Math.round((el.getBoundingClientRect().top-top)/lh); });
+    var last=els[els.length-1];
+    A.totalLines=last?Math.max(1,Math.round((last.getBoundingClientRect().bottom-top)/lh)):1;
+    A.lh=lh;
+    A.viewLines=Math.max(1,Math.floor(H/lh));
+    A.sectionCount=A.verseLineIndex.length;
+    A.pageCount=Math.max(1,Math.ceil(A.totalLines/A.viewLines));
+    A.ready=true;
+    applyView(silent);
+  }
+
+  function sectionOfLine(line){
+    var k=0;
+    for(var i=0;i<A.verseLineIndex.length;i++){ if(A.verseLineIndex[i]<=line) k=i; }
+    return k;
+  }
+
+  function applyView(silent){
+    var body=artBody(); if(!body||!A.ready) return;
+    var flow=body.querySelector('.flow'); if(!flow) return;
+    var N=A.viewLines, start;
+    if(A.unit==='section'){
+      A.sectionIndex=Math.max(0,Math.min(A.sectionCount-1,A.sectionIndex));
+      start=A.verseLineIndex[A.sectionIndex]||0;
+    } else {
+      A.pageIndex=Math.max(0,Math.min(A.pageCount-1,A.pageIndex));
+      start=A.pageIndex*N;
+    }
+    flow.style.transform='translateY(-'+(start*A.lh).toFixed(1)+'px)';
+    var foot=document.querySelector('#surface .article .foot');
+    if(foot){
+      if(A.unit==='page'){
+        var contTop=(start>0 && A.verseLineIndex.indexOf(start)<0);
+        var end=start+N, cut=(A.totalLines>end);
+        A.verseLineIndex.forEach(function(v){ if(v===end) cut=false; });
+        foot.textContent=(contTop?'（续上） ':'')+(cut?'（续）':'');
+      } else {
+        foot.textContent='节 '+(A.sectionIndex+1)+' / '+A.sectionCount;   // section 模式没有屏概念，也永不标「续」
       }
-      out.push({verses:[[v[0],text.slice(0,cut)]],cont:true,splitFrom:v[0]});
-      // 余下部分作为新的一节继续参与分页
-      cur.push([v[0],text.slice(cut)]);   // 正文不插入任何字符，跨页标记只在页脚
-      p.innerHTML='<span class="sn">'+v[0]+'</span>'+esc(cur[0][1]);
-      h=p.getBoundingClientRect().height;
-    });
-    if(cur.length) out.push({verses:cur,cont:false});
-    ruler.remove();
-    pages=out.length?out:[{verses:[],cont:false}];
-    if(S.article.page>=pages.length) S.article.page=pages.length-1;
+    }
+    var seg=document.querySelector('#surface .article .head .seg');
+    if(seg) seg.textContent = A.unit==='section'
+      ? ('第 '+(A.sectionIndex+1)+' / '+A.sectionCount+' 节')
+      : ('第 '+(A.pageIndex+1)+' / '+A.pageCount+' 屏');
+    if(!silent && BC) BC.postMessage({kind:'pageMap', idx:S.article.idx, unit:A.unit,
+      pageIndex:A.pageIndex, pageCount:A.pageCount, sectionIndex:A.sectionIndex,
+      sectionCount:A.sectionCount, totalLines:A.totalLines, viewLines:A.viewLines});
+  }
+
+  function stepArticle(dir, steps){
+    if(!A.ready) return;
+    var st=Math.max(1,steps||1);
+    if(A.unit==='section'){
+      var ni=A.sectionIndex+(dir==='prev'?-st:st);
+      A.sectionIndex=Math.max(0,Math.min(A.sectionCount-1,ni));
+      if(ni!==A.sectionIndex) sys('已到章末', 1600);
+    } else {
+      var np=A.pageIndex+(dir==='prev'?-st:st);
+      A.pageIndex=Math.max(0,Math.min(A.pageCount-1,np));
+      if(np!==A.pageIndex) sys('已到章末', 1600);
+      A.sectionIndex=sectionOfLine(A.pageIndex*A.viewLines);
+    }
+    applyView();
+  }
+
+  function setUnit(u){
+    var line=(A.unit==='section')?(A.verseLineIndex[A.sectionIndex]||0):(A.pageIndex*A.viewLines);
+    A.unit=(u==='section')?'section':'page';
+    if(A.unit==='section') A.sectionIndex=sectionOfLine(line);
+    else A.pageIndex=Math.max(0,Math.min(A.pageCount-1,Math.floor(line/A.viewLines)));
+    applyView();                      // 切 unit 不重发 pageMap：屏数按 unit 现算
+  }
+
+  function fitOnePage(){
+    var px=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fs'))||72;
+    for(var i=0;i<40;i++){
+      document.documentElement.style.setProperty('--fs', px+'px');
+      layoutArticle(true);
+      if(A.pageCount<=1) break;
+      px-=4; if(px<24){ px=24; break; }        // 步长 4，不静默跨档
+    }
+    document.documentElement.style.setProperty('--fs', px+'px'); layoutArticle(true);
+    if(BC) BC.postMessage({kind:'pageMap', idx:S.article.idx, unit:A.unit, pageIndex:A.pageIndex,
+      pageCount:A.pageCount, sectionIndex:A.sectionIndex, sectionCount:A.sectionCount, effectivePx:px});
+    sys('整章一屏：实际字号 '+px+'px（按步长 4 下调）', 2800);
   }
 
   // ── 渲染 ──
@@ -225,11 +294,12 @@ body{font-family:var(--ui)}
         '<div class="lyrics">'+LYRICS.map(function(l,i){return '<div class="lyric'+(i===cur?' cur':'')+'">'+esc(l)+'</div>';}).join('')+'</div></div>';
     } else if(S.scene==='article'){
       var a=S.article.items[S.article.idx]||{t:'诗篇 23 章',ch:23};
-      html='<div class="article"><div class="head"><b>'+esc(a.t)+'</b><span>第 '+(S.article.page+1)+' / '+Math.max(1,pages.length)+' 屏</span>'+
+      var vs=VERSES[a.ch]||VERSES[23];
+      html='<div class="article"><div class="head"><b>'+esc(a.t)+'</b><span class="seg"></span>'+
         '<span style="margin-left:auto">'+(S.article.cast?'● 已上屏':'○ 预览（未上屏）')+'</span></div>'+
-        '<div class="body">'+((pages[S.article.page]||{verses:[]}).verses||[]).map(function(v){
-          return '<p><span class="sn">'+v[0]+'</span>'+esc(v[1])+'</p>';}).join('')+'</div>'+
-        '<div class="foot">'+(((pages[S.article.page]||{}).cont)?'（续）':'')+'</div></div>';
+        '<div class="body"><div class="flow">'+vs.map(function(v){
+          return '<p><span class="sn">'+v[0]+'</span>'+esc(v[1])+'</p>';}).join('')+'</div></div>'+
+        '<div class="foot"></div></div>';
     } else {
       html='<div class="cast">'+esc(S.cast.text||'（板书内容来自控制台）')+'</div>';
     }
@@ -241,27 +311,29 @@ body{font-family:var(--ui)}
     $('grpArticle').style.display = S.scene==='article' ? '' : 'none';
     $('sepA').style.display = S.scene==='article' ? '' : 'none';
     $('presentBtn').textContent = S.article.cast ? '结束' : '投出';
+    // V2.1.6：步进按钮文案随 unit 变——数据里的「节」＝章
+    var bp=document.querySelector('[data-a="prev"]'), bn=document.querySelector('[data-a="next"]');
+    var ub=document.querySelector('[data-a="unit"]');
+    if(ub) ub.textContent=(A.unit==='section'?'按屏':'按节');
+    if(bp) bp.textContent=(A.unit==='section'?'上一章':'上一屏');
+    if(bn) bn.textContent=(A.unit==='section'?'下一章':'下一屏');
     $('blankBtn').textContent = (S.scene==='standby' && S.standby.mode==='blank') ? '退出黑屏' : '黑屏';
     // V2.1.2：非音乐画面下的音乐状态。article/cast 下必为暂停（不提供「继续」，服务端会 409）
     var muted = (S.scene==='article' || S.scene==='cast');
     var npOn = S.scene !== 'music' && (S.music.playing || S.music.pos > 0);
     $('np').textContent = npOn ? ('♪ ' + ((S.music.items[S.music.idx]||{t:'—'}).t) + (muted?'（已暂停）':(' 停止 ' + fmt(S.music.pos)))) : '';
     $('np').style.cssText = npOn ? 'font-size:12px;color:#8ab4f8;padding:0 8px;white-space:nowrap' : 'display:none';
-    // 分页不在这里触发：切到文章 / resize / 字号变化时显式调用 afterLayout()
+    if(S.scene==='article') requestAnimationFrame(function(){ layoutArticle(); });
+    // 分页不在 render 里同步做：切到文章 / resize / 字号变化时调用 afterLayout()（先等字体就绪）
   }
   function clockText(){ var d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
   setInterval(function(){ var c=$('clock'); if(c) c.textContent=clockText(); },20000);
 
-  // 文章：字体就绪 → 测量 → 若页码越界回夹（⑦ 的实现顺序）
+  // 文章：字体就绪 → 重绘 → 真实几何测量（V2.1.6：不再有平行 ruler，也不再有 pages 数组）
   var measuring=false;
   function afterLayout(){
     if(measuring) return; measuring=true;
-    var go=function(){
-      measurePages();
-      measuring=false;
-      render();                                   // 测量后必然重绘（否则首屏是空的）
-      send({kind:'pageMap', idx:S.article.idx, pageIndex:S.article.page, pageCount:pages.length});
-    };
+    var go=function(){ render(); measuring=false; };
     if(document.fonts && document.fonts.ready){ document.fonts.ready.then(go); } else go();
   }
   window.addEventListener('resize', function(){ if(S.scene==='article'){ clearTimeout(window._rz); window._rz=setTimeout(afterLayout,200); } });
@@ -280,10 +352,12 @@ body{font-family:var(--ui)}
     }
     if(t.dataset.a){
       var k2=t.dataset.a;
-      if(k2==='next'){ S.article.page=Math.min(pages.length-1,S.article.page+1); }
-      if(k2==='prev'){ S.article.page=Math.max(0,S.article.page-1); }
+      if(k2==='next'){ stepArticle('next'); return; }
+      if(k2==='prev'){ stepArticle('prev'); return; }
+      if(k2==='unit'){ setUnit(A.unit==='section'?'page':'section'); render(); return; }
+      if(k2==='fit'){ fitOnePage(); return; }
       if(k2==='present'){ S.article.cast=!S.article.cast; sys(S.article.cast?'已投出：显示面=这一屏':'已结束投屏（回到待机）',1800);
-        send({kind:'article',idx:S.article.idx,page:S.article.page,cast:S.article.cast,pageCount:pages.length}); render(); return; }
+        send({kind:'article',idx:S.article.idx,page:A.pageIndex,unit:A.unit,cast:S.article.cast}); render(); return; }
       render(); return;
     }
     if(t.id==='np'){   // V2.1.2：article/cast 下不可起音乐；待机下可停
@@ -340,7 +414,11 @@ body{font-family:var(--ui)}
     if(d.kind==='standby'){ S.standby.mode=d.mode||'theme'; save(); render(); }
     if(d.kind==='music'){ if(typeof d.idx==='number') S.music.idx=d.idx; if(typeof d.pos==='number') S.music.pos=d.pos;
       if(typeof d.playing==='boolean') S.music.playing=d.playing; render(); }
-    if(d.kind==='article'){ if(typeof d.idx==='number') S.article.idx=d.idx; if(typeof d.page==='number') S.article.page=d.page;
+    if(d.kind==='scroll'){ if(d.unit) setUnit(d.unit); stepArticle(d.direction||'next', d.steps); return; }
+    if(d.kind==='articleUnit'){ setUnit(d.unit); return; }
+    if(d.kind==='fitOnePage'){ fitOnePage(); return; }
+    if(d.kind==='article'){ if(typeof d.idx==='number') S.article.idx=d.idx; if(typeof d.page==='number'){ S.article.page=d.page; A.pageIndex=d.page; }
+      if(d.unit) A.unit=(d.unit==='section'?'section':'page');
       if(S.scene!=='article' && d.cast!==false) S.scene='article';
       if(typeof d.cast==='boolean'){ S.article.cast=d.cast; if(d.cast) S.scene='article'; }
       render(); }
