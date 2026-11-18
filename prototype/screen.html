@@ -280,6 +280,7 @@ body{font-family:var(--ui)}
     A.ready=true;
     verifyModel(flow);
     applyView(silent);
+    postMetrics();                      // V2.2.20：每次重排后上报一次几何（200ms 防抖）
   }
 
   function buildPageStarts(H, lh, gap){
@@ -376,6 +377,25 @@ body{font-family:var(--ui)}
     BC.postMessage({kind:'pageMap', anchor:anchorAt(startLine), unit:A.unit,
       pageIndex:A.pageIndex, pageCount:A.pageCount, sectionIndex:A.sectionIndex,
       sectionCount:A.sectionCount, viewLines:A.viewLines});   // 恒 7 字段：totalLines / charsPerLine 都不上行
+  }
+
+  // V2.2.20（协议 §4.6 `state.report.layout`）：单屏/显控一体形态（D-3）**必须同样上报几何**。
+  // 否则控制台只能回退 1728 并标「估算」——三值方案在 D-3 上等于失效。
+  // 五项取**同一帧**实测：availW/availH ＝ 正文块内容宽/高，fontSizePx/lineHeight 取计算值，
+  // charsPerLine 取 auto 派生后的整数（cplNow 与渲染切行同源）。200ms 防抖合并同一波重排。
+  var _mt=null;
+  function postMetrics(){
+    if(!BC) return;
+    clearTimeout(_mt);
+    _mt=setTimeout(function(){
+      if(!BC) return;
+      var b=artBody(); if(!b) return;                 // 非 article 场景无正文块，不上报
+      if(!(b.clientHeight>40)) return;
+      var cs=getComputedStyle(b);
+      BC.postMessage({kind:'layoutMetrics', availW:usableW(b), availH:b.clientHeight,
+        fontSizePx:parseFloat(cs.fontSize)||72, lineHeight:parseFloat(cs.lineHeight)||0,
+        charsPerLine:cplNow(b)});
+    }, 200);
   }
 
   function stepArticle(dir, steps){

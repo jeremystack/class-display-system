@@ -431,7 +431,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
       BC.postMessage({kind:'layoutMetrics', availW:usableW(b), availH:b.clientHeight,
         fontSizePx:parseFloat(cs.fontSize)||72, lineHeight:parseFloat(cs.lineHeight)||0,
         charsPerLine:cplNow(b)});
-    }, 120);
+    }, 200);
   }
 
   // mqtt §4.6：W/H 或三参任一变化 ⇒ 重测 → 重算 → **重发 pageMap**（auto 下 pageCount 随屏变）
