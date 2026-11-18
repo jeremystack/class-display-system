@@ -484,14 +484,14 @@ cds/v1/d/{deviceId}/bind              服务端 → 显示端           绑定�
 
 1. 重连间隔 3s / 6s / 12s / 24s，上限 5 次
 2. **启动/重连顺序（V2.2.23 定，不可颠倒）**：① 凭**设备凭据**自检（REST）拿到 `userId`（未绑定为 `null`）→ ② 用 `userId` 注册 LWT 再 CONNECT → ③ 订阅 `d/{deviceId}/bind`（**快照即判**：`bound` 继续；`revoked` 或无 retained ⇒ 回输码页，不再订阅 `cmd`）→ ④ 已绑定才订阅 `u/{userId}/cmd`，并主动重发一次 `state.report`。颠倒就会出两种错：先连后拿 `userId` ⇒ LWT 注册不到正确主题（`presence` 永远缺一条）；先订阅 `cmd` 再看快照 ⇒ 被踢的屏仍会执行一轮指令
-2-1. **REST 与 retained 快照冲突时：DB 为准（有效性），快照只负责即时性（V2.2.24 定，会出事故，必须写死）**：上面的顺序依赖「`d/{deviceId}/bind` 一定有 retained」，而 retained 可能因 TTL 过期、broker 侧丢失、主题发错而**不存在**。若此时 REST 说 `bound` 而快照没有消息，按「无 retained ＝ 从未绑定」判就会把一台**合法在用的屏踢回输码页**——第一次 retained 过期就是一次大规模误踢。
+3. **REST 与 retained 快照冲突时：DB 为准（有效性），快照只负责即时性（V2.2.24 定，会出事故，必须写死）**：上面的顺序依赖「`d/{deviceId}/bind` 一定有 retained」，而 retained 可能因 TTL 过期、broker 侧丢失、主题发错而**不存在**。若此时 REST 说 `bound` 而快照没有消息，按「无 retained ＝ 从未绑定」判就会把一台**合法在用的屏踢回输码页**——第一次 retained 过期就是一次大规模误踢。
    - **不得**以「无 retained」直接判未绑定。判据是 **REST 自检结果**（`userId` 是否为 `null`）；
    - 快照**缺失**或与 REST **不符**时：以 REST 为准继续工作（`bound` 就订阅 `cmd`），并**由服务端补写**一条正确的 retained（`bound`/`revoked`）——快照是缓存，不是真相源；
    - 反过来，REST 不可用（降级/超时）时**不得**靠快照判定「未绑定」而清掉本地凭据：保持现状重试，只按 §6-1 的节奏退避；
    - 一致性方向唯一：**DB → retained 快照 → 显示端**。任何「快照否掉 DB」的实现都是错的方向。
-3. 服务端对离线设备缓存最近 1 条关键 `cmd`，上线后补发（`CleanStart=false`）
-4. MQTT 整体不可用时，控制端降级为轮询 `GET /api/v1/devices/{deviceId}/state`（2s），控制指令走 REST（API §5，`delivered=polling`）
-5. 降级期间文章导航只保证章节正确，不保证滚动位置一致
+4. 服务端对离线设备缓存最近 1 条关键 `cmd`，上线后补发（`CleanStart=false`）
+5. MQTT 整体不可用时，控制端降级为轮询 `GET /api/v1/devices/{deviceId}/state`（2s），控制指令走 REST（API §5，`delivered=polling`）
+6. 降级期间文章导航只保证章节正确，不保证滚动位置一致
 
 ---
 
