@@ -35,8 +35,7 @@ body{font-family:var(--ui)}
 /* ── 音乐 ── */
 .music{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
   background:var(--music-bg);color:var(--music-fg);padding:4vh 6vw}
-.music .cover{width:min(26vh,210px);height:min(26vh,210px);border-radius:18px;
-  background:linear-gradient(135deg,#2b3a5c,#4a2f57 60%,#1b2437);margin-bottom:2.6vh;opacity:.92}
+/* V2.1.5：去掉封面（与 display 一致：只留歌名 + 歌词） */
 .music .t{font-size:1.45rem;font-weight:600;letter-spacing:.05em}
 .music .sub{font-size:.78rem;opacity:.55;margin-top:.5rem}
 .lyrics{margin-top:3vh;font-size:1.25rem;line-height:2.1;color:rgba(255,255,255,.42)}
@@ -221,7 +220,7 @@ body{font-family:var(--ui)}
     } else if(S.scene==='music'){
       var it=S.music.items[S.music.idx]||{t:'',dur:245000};
       var cur=Math.min(LYRICS.length-1,Math.floor((S.music.pos/it.dur)*LYRICS.length));
-      html='<div class="music"><div class="cover"></div><div class="t">'+esc(it.t)+'</div>'+
+      html='<div class="music"><div class="t">'+esc(it.t)+'</div>'+
         '<div class="sub">'+(S.music.playing?'正在播放':'已暂停')+' · 第 '+(S.music.idx+1)+' / '+S.music.items.length+' 首 · '+fmt(S.music.pos)+'</div>'+
         '<div class="lyrics">'+LYRICS.map(function(l,i){return '<div class="lyric'+(i===cur?' cur':'')+'">'+esc(l)+'</div>';}).join('')+'</div></div>';
     } else if(S.scene==='article'){
