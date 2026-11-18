@@ -169,13 +169,27 @@ body{font-family:var(--ui)}
   // ── 每个场景各自套样式（切场景原子生效，不出现默认样式帧） ──
   // V2.1.11：每行字数默认 auto（按屏宽 ÷ 字号派生）
   var STYLE_CPL='auto';
+  var STYLE_FPX='auto';        // V2.2.22：'auto'＝按视口高派生；数字＝显式锁定
+  function deriveFpx(){
+    var _h=window.innerHeight||1080;
+    return Math.max(24, Math.min(160, Math.round(_h*0.067/4)*4));
+  }
+  function applyFpx(){
+    var f=(STYLE_FPX==='auto')?deriveFpx():STYLE_FPX;
+    f=Math.max(24, Math.min(160, f));
+    document.documentElement.style.setProperty('--fs', f+'px');
+    return f;
+  }
   function applySceneStyle(scene){
     var st=S.styles[scene]||{}; var r=document.documentElement.style;
     // V2.1.6：单屏页也吃 fontSizePx（px），不再用 1rem×scale 那种倍率——倍率算不出「一屏几行」
     // V2.2.13：fontScale 作废，不再 ×18 折算（1.0 会得 18px）
-    var fpx = st.fontSizePx ? +st.fontSizePx : null;
-    if(!fpx){ var _h=window.innerHeight||1080; fpx=Math.max(24, Math.min(160, Math.round(_h*0.067/4)*4)); }
-    if(fpx) r.setProperty('--fs', Math.max(24, Math.min(160, fpx)) + 'px');
+    // V2.2.22：显式值锁进 STYLE_FPX（换屏不重算）；缺省或 'auto' ⇒ 每次按视口高派生。
+    // 旧码把派生算在切场景这一处，换屏（窗口化<->全屏/旋屏）后字号仍是旧视口的值
+    // （产品 V2.1.19 验收 B11：单屏页派生字号必须随视口高重派生）。
+    var _f=+st.fontSizePx;
+    STYLE_FPX=(st.fontSizePx!=null && st.fontSizePx!=='auto' && isFinite(_f)) ? Math.max(24, Math.min(160, _f)) : 'auto';
+    applyFpx();
     if(st.lineHeight) r.setProperty('--lh', st.lineHeight);
     if(st.charsPerLine==='auto') STYLE_CPL='auto';
     else if(st.charsPerLine!=null && st.charsPerLine!=='') STYLE_CPL=Math.max(6, Math.min(40, +st.charsPerLine||12));
@@ -537,7 +551,18 @@ body{font-family:var(--ui)}
     var go=function(){ render(); measuring=false; };
     if(document.fonts && document.fonts.ready){ document.fonts.ready.then(go); } else go();
   }
-  window.addEventListener('resize', function(){ if(S.scene==='article'){ clearTimeout(window._rz); window._rz=setTimeout(afterLayout,200); } });
+  // V2.2.22：换屏必须先重派生字号，再重排——只 afterLayout 会让 --fs 停在旧视口值。
+  function kickLayout(){
+    if(S.scene!=='article') return;
+    clearTimeout(window._rz);
+    window._rz=setTimeout(function(){
+      if(STYLE_FPX==='auto') applyFpx();
+      afterLayout();
+    },200);
+  }
+  window.addEventListener('resize', kickLayout);
+  window.addEventListener('orientationchange', kickLayout);
+  document.addEventListener('fullscreenchange', kickLayout);
 
   // ── 交互 ──
   $('bar').addEventListener('click', function(e){

@@ -2,7 +2,7 @@
 
 ## 📋 文档信息
 
-- **版本**: V2.2.21（V2.2 基线 + V2.2.1…V2.2.21 订正，见 §9 变更记录）
+- **版本**: V2.2.22（V2.2 基线 + V2.2.1…V2.2.22 订正，见 §9 变更记录）
 - **更新日期**: 2026-11-18
 - **Broker**: EMQX Cloud
 - **传输**: MQTT 5.0 over WebSocket (WSS)
@@ -326,7 +326,8 @@ cds/v1/{deviceCode}/presence  显示端 → 服务端   上下线 QoS1, retain=t
 - **`c × F ≤ W` 只能由显示端执行**：服务端既不知道 `W` 也不知道 `F`，无法校验；`display.style` 的 `ack` 因此**必须回带生效值** `effective: {fontSizePx, lineHeight, charsPerLine}`（`auto` 回派生出的整数），否则控制台会以为请求生效了。`effective` 只出现在 `ack` 里，**不进 `pageMap`**（`pageMap` 恒 7 字段）。<br>**几何不进 `effective`，走 `state.report.layout`（V2.2.15 定稿，撤销 V2.2.14 的 5 字段版）**：`availW`/`availH` 随**每次重排**变化（换屏、旋屏、翻页重排、滚动条出现），与「是否刚下发过 `display.style`」无关；塞进 `ack` 只能覆盖「刚下发样式」这一种情形，且可能在重排完成前报到旧值。故两者分家：**`effective` ＝ 三条样式值的生效结果；`layout` ＝ 几何实测**。不得再把 `availW`/`availH` 塞回 `effective`（同一事实写两处，必然一边过期一边新，实现者无从取舍）。
 
 - **控制台的「每行字数上限」必须用 `state.report.layout.availW` 算，不得写死 1728（V2.2.15）**：`c_max = min(24, floor(availW ÷ fontSizePx))`，`availW` 与 `fontSizePx` **必须取同一条 `layout`**（拿新宽度配旧字号会算出上限虚高）。写死 1920 屏的可用宽会在 1280/1640 屏上给出过大的上限——1280 屏 `availW≈1152`、72px 时真上限 **16**（`floor(1152÷72)`；V2.2.16 订正，原写 18 是 `floor(1728÷96)` 那行串档——照 18 实现会多排 2 字、行尾被 `overflow:hidden` 静默裁掉），控制台却允许选 24，显示端再 `clamp` 回 16，等于**锁了没生效**（静默改值，与「两次乘字号」同类错误）。同窗口的默认档另算：1280×800 派生字号 `round4(800×6.7%)=52`，`floor(1152÷52)=**22**`——**断言必须写清用哪档字号**（显式 72 ⇒ 16；默认 auto ⇒ 22），只写「1280 屏上限 18」两头都不对。控制台未连显示端时按 1920 估算，但必须标注「估算」。<br>**原型的承载方式（V2.2.16 备案，避免被读成「两套字段」）**：`prototype/display.html` 用 BroadcastChannel 的 `styleApplied`（＝`ack.effective`，三值）与 `layoutMetrics`（＝`state.report.layout`，五项）搬运同一结构，字段名与协议一致；上 MQTT 后分别落在 `ack.effective` 与 `state.report.layout`，**不是两套**。单屏/显控一体原型 `prototype/screen.html` 同样发 `layoutMetrics`（五项同形，200ms 防抖）与 `styleApplied`（＝`ack.effective`，V2.2.20），D-3 下控制台不必回退 1728、也能判出样式是否被收紧。
-- **`W` 或三参任一变化**（`ResizeObserver` / 旋屏 / 换屏）⇒ 重测 → 重算分页 → **重发 `pageMap`**。`auto` 模式下 `pageCount` 随屏变，控制台**不得缓存**旧值（缓存会在换屏后一直显示旧屏数）。
+- **`W` 或三参任一变化**（`ResizeObserver` / 旋屏 / 换屏）⇒ 重测 → 重算分页 → **重发 `pageMap`**。
+- **派生量必须随视口「重派生」，不得只在启动/切场景算一次（V2.2.22）**：`fontSizePx` 缺省（`auto`）时 `F = round4(视口高 × 6.7%)` 是**视口高的函数**——`resize` / 旋屏 / 窗口化↔全屏都必须**先重派生 `F`，再按新 `F` 重算 `N`（`auto` 每行字数）与分页**，然后重发 `pageMap` ＋ `state.report.layout`。**只重测 `H` 不重派生 `F`** 会让字号停在旧视口的值：1280×800 窗口（派生 52px）切到 1920×1080 全屏后仍是 52（应 72），行数与屏数全按错字号算出，而 `layout.fontSizePx` 还会把旧值当「实测」上报 ⇒ 静默改值（V2.2.16 定案要打的那一类）。显式下发（`fontSizePx` 为整数）**不**重派生——那是老师锁定值，跨屏不变（见上「显式整数」条）。原型对照：`display.html` 的 `kick()` 已带 `if(STYLE_FPX==='auto') applyFpx()`；`screen.html` 到 V2.2.21 仍只在 `applySceneStyle()` 里算一次、`resize` 仅调 `afterLayout()` ⇒ 产品 V2.1.19 验收 B11 判失败，本版补齐。`auto` 模式下 `pageCount` 随屏变，控制台**不得缓存**旧值（缓存会在换屏后一直显示旧屏数）。
 
 #### 4.6.1 分页模型（V2.2.8：算术为主线，DOM 为校验）
 
@@ -468,6 +469,8 @@ cds/v1/{deviceCode}/presence  显示端 → 服务端   上下线 QoS1, retain=t
 ---
 
 ## 9. 变更记录
+
+- **V2.2.22 (2026-11-18)**：**派生字号必须随视口重派生（单屏原型补齐，换屏路径写进协议）**（产品 V2.1.19 验收 B11 实测判定）。① **缺陷**：`prototype/screen.html` 的派生字号只在 `applySceneStyle()` 内算一次（`round(innerHeight×0.067/4)*4`），`resize` 只调 `afterLayout()` ⇒ **窗口化↔全屏 / 旋屏后 `--fs` 停在旧视口值**（1280×800 派生 52px，切 1080p 全屏后仍 52，应 72）；更隐蔽的是 `layoutMetrics.fontSizePx` 会把旧值当「实测」上报。② **修法**：抽 `deriveFpx()`/`applyFpx()` ＋ `STYLE_FPX`（`auto` | 显式整数），`applySceneStyle()` 只置 `STYLE_FPX` 并调 `applyFpx()`；新增 `kickLayout()` 挂 `resize`/`orientationchange`/`fullscreenchange` 三处，`STYLE_FPX==='auto'` 时**先 `applyFpx()` 再 `afterLayout()`**（→ `render` → `layoutArticle` → `postMetrics` → `styleApplied` 全链重跑），显式字号不重派生。`screen.html` 35,196 → 36,218 B。③ **协议侧**：§4.6 补「派生量必须随视口重派生」一条（含 1280×800→1920×1080 实例），并明写「只重测 `H` 不重派生 `F`」属静默改值。④ `display.html` 无此缺陷（`kick()` 自 V2.2.15 已带 `applyFpx`），本版未动（42,352 B）。零协议形状变更。
 
 - **V2.2.21 (2026-11-18)**：**历史条目回指（零内容变更）**（Chief 19:22 复核）。§9 的 V2.2.17 ③ 与 V2.2.18 ② 原文分别写「悬挂缩进仍未实现」「阻塞点不变…待产品三选一」，V2.2.19 落地后未回指，**单读这两条会误判为至今未实现**（本轮 Chief 与产品复核都据此各报过一次「原型 0 命中」）。本版只在这两处加「已闭合／已实现」指针；行数公式（§4.6.1 `L(k)=1` 或 `1+ceil((n−c)/(c−1))`）、算例表（§4.6.3 `c=8→23 行`、`c=16→13 行`）、`pageMap` 7 字段、`effective` 三值、`layout` 五项**一概不动**。
 - **V2.2.20 (2026-11-18)**：**单屏形态（D-3）补 `state.report.layout` 上报、两原型防抖统一 200ms**（Chief 19:08 复核）。① `prototype/screen.html`（「单屏模式原型·显控一体」）此前只发 `pageMap`（`send()` 与 `BC.postMessage` 两处）、`layoutMetrics` **零命中** ⇒ D-3 下控制台拿不到 `availW`/`availH`，`c_max` 只能回退 1728 并标「估算」，**三值方案在 D-3 上失效**。现按 `display.html` **同形**补 `postMetrics()`：五项取**同一帧**实测（`availW`＝正文块内容宽 `usableW()`、`availH`＝`clientHeight`、`fontSizePx`/`lineHeight` 取 `getComputedStyle`、`charsPerLine`＝`cplNow()` 即 `auto` 派生后整数且**与渲染切行同源**）；`artBody()` 不存在或高度 <40 时不上报（非 article 场景无正文块）；在 `layoutArticle()` 成功重排尾部触发，覆盖 `resize`/旋屏/`fonts.ready`/切场景/`fitOnePage` 各档重排。② 两原型防抖统一 **200ms**（`display.html` 原为 120ms），与本节「同屏 200ms 内防抖合并」对齐；防抖只合并同一波重排，**不丢最后一次**（`clearTimeout` 后重排计时）。③ §4.6 备案补明 `screen.html` 发同名 `layoutMetrics`，字段与 `display.html` / 协议 `layout` 一致，**不是第二套字段**。④ D-3 同时补 **`styleApplied`（＝`ack.effective` 三值）**：收到 `style` 置 pending，**重排完成后**回带实测值（`--fs` 的 px、`--lh` 的比率、`cplNow()` 的整数），`fitOnePage` 成功与回滚两条出口都回带；缺了它，控制台发完样式无从判断「锁的 24 有没有被 `clamp` 回 16」「`auto` 派生出多少」——即 §4.6 要打的**静默改值**。**零协议形状变更（`layout` 仍五项、`pageMap` 仍 7 字段、`effective` 仍三值）。**
