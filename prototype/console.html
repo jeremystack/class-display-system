@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CDS 控制台原型 V2.0（一屏）</title>
+<title>CDS 控制台原型 V2.1（一屏 · 四场景）</title>
 <style>
 :root{
   --surface:#0f1115; --raised:#171a21; --border:#262b36; --text:#e6e8ee; --muted:#9aa3b2;
@@ -127,16 +127,18 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       <button id="refreshCode" title="刷新控制码（已连终端不掉线）">⟳</button>
       <button id="unbindAll" class="ghost" title="全部解绑：所有终端回到输码页" style="font-size:12px">全部解绑</button>
     </div>
+    <a class="ghost" href="screen.html" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);font-size:12px" title="显控一体：这台电脑 + HDMI 复制到投影">🖥 单屏模式</a>
     <div class="conn"><span class="dot"></span>已连接</div>
   </header>
 
   <nav class="tabs">
     <div class="seg" role="tablist">
+      <button role="tab" data-scene="standby" aria-selected="false">待机</button>
       <button role="tab" data-scene="music" aria-selected="false">音乐</button>
       <button role="tab" data-scene="article" aria-selected="false">文章</button>
       <button role="tab" data-scene="cast" aria-selected="false">板书</button>
     </div>
-    <span class="hint">三场景互斥 · 切换不刷新 · 切回状态保留</span>
+    <span class="hint">四场景互斥 · 待机为默认 · 切换不刷新 · 切回状态保留</span>
   </nav>
 
   <main class="main">
@@ -206,14 +208,15 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
   // ── 状态 ──
   var S = {
     codeObj: { code:'482913', exp: Date.now()+15*60*1000, used:false },
-    scene: 'idle',
+    scene: 'standby',
+    standby: { mode:'theme' },
     termOnline: 0,
     music: { idx: 0, playing: false, pos: 0, items: [
       { t:'我心灵得安宁', m:'4:05', dur:245000, track:'main' },
       { t:'奇异恩典', m:'3:42', dur:222000, track:'accompaniment' },
       { t:'靠近主', m:'5:10', dur:310000, track:'main' }
     ]},
-    article: { idx: 0, page: 0, items: [
+    article: { idx: 0, page: 0, cast: false, items: [
       { t:'诗篇 23 章', v:'诗篇', ch:23 },
       { t:'约伯记 3 章', v:'约伯记', ch:3 }
     ]},
@@ -278,7 +281,11 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     if(scene !== 'music') S.music.playing = false;
     send({kind:'scene', scene:scene});
     if(scene==='music') send({kind:'music', playing:S.music.playing, pos:S.music.pos, idx:S.music.idx});
-    if(scene==='article') send({kind:'article', idx:S.article.idx, page:S.article.page});
+    if(scene==='standby') send({kind:'standby', mode:S.standby.mode});
+    if(scene==='article'){
+      if(S.article.cast){ send({kind:'article', idx:S.article.idx, page:S.article.page, cast:true}); }
+      else { render(); return; }   // 预览：只切本机面板，不上屏
+    }
     if(scene==='cast') send({kind:'cast', active:S.cast.active, text:S.cast.text, scene:'cast'});
     render();
   }
@@ -313,8 +320,21 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
   function render(){
     renderTabs(); renderLists();
     var n = $('now'), html='';
-    if(S.scene === 'idle'){
-      html = '<div class="stage"><div class="idle"><b>还没有投出内容</b>在左边挑一条，或直接点上方「音乐 / 文章 / 板书」开始。<br><span style="font-size:12px">教室屏幕此刻显示待机画面</span></div></div>';
+    if(S.scene === 'standby'){
+      var blank = S.standby.mode==='blank';
+      html = '<div class="stage"><div style="width:100%;max-width:520px;text-align:center">'+
+        '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">教室屏幕此刻显示</div>'+
+        '<div style="display:flex;gap:10px;justify-content:center;margin-bottom:14px">'+
+          '<button class="'+(blank?'':'primary')+'" data-sb="theme">主题大图</button>'+
+          '<button class="'+(blank?'primary':'')+'" data-sb="blank">黑屏（不让学生看到内容）</button>'+
+        '</div>'+
+        '<div style="border:1px dashed var(--border);border-radius:12px;padding:18px;color:var(--muted);font-size:12px;line-height:1.8">'+
+          (blank?'⏹ 纯黑：只留底部 1px 热区。<b>注意</b>：复制模式下学生仍看得见你按了这个按钮。'
+                :'🖼 主题大图 + 教室名 + 时间。图与压暗层随样式下发。')+
+          '<br>待机是<b>默认态</b>：结束板书 / 结束投屏 / 音乐 stop 都回到这里。'+
+        '</div>'+
+        '<div style="margin-top:14px;font-size:12px;color:var(--muted)">自定义主题上传属 P1（R2 预签名），本版只有内置图与纯黑。</div>'+
+      '</div></div>';
     } else if(S.scene === 'music'){
       var it = S.music.items[S.music.idx] || { t:'（清单为空）', m:'--:--', dur:245000 };
       html = '<div class="stage"><div style="width:100%">'+
@@ -329,7 +349,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
           '<button data-m="skip2" title="+5s">+5s</button>'+
           '<button data-m="next" title="清单下一首">⏭</button>'+
         '</div>'+
-        '<div class="extra"><span>音量</span><input type="range" min="0" max="100" value="50" id="vol">'+
+        '<div class="extra"><span style="color:#8ab4f8">🔊 声音从本机输出</span><span>音量</span><input type="range" min="0" max="100" value="50" id="vol">'+
         '<button class="ghost" style="font-size:12px" data-m="track">切伴奏</button>'+
         '<span class="ro">（切走场景时自动暂停并记住位置）</span></div>'+
       '</div></div>';
@@ -338,9 +358,14 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       var vs = VERSES[a.ch] || VERSES[23];
       var start = S.article.page * 3, slice = vs.slice(start, start+3);
       html = '<div class="stage"><div class="article" style="font-size:'+(17*S.style.fontScale).toFixed(1)+'px;line-height:'+S.style.lineHeight+';text-align:'+S.style.align+'">'+
-        '<div class="head"><b>'+esc(a.t)+'</b><span>预选第 '+(S.article.idx+1)+' 条</span><span style="margin-left:auto">第 '+(S.article.page+1)+' 屏</span></div>'+
+        '<div class="head"><b>'+esc(a.t)+'</b><span>预选第 '+(S.article.idx+1)+' 条</span>'+
+          '<span style="margin-left:auto">第 '+(S.article.page+1)+' 屏'+(S.article.cast?'':' · 学生看不到（未上屏）')+'</span></div>'+
         '<div class="verses">'+ slice.map(function(v){ return '<p><span class="sn">'+v[0]+'</span>'+esc(v[1])+'</p>'; }).join('') +'</div>'+
-        '<div class="castbar"><button data-a="prev">上一屏</button><button class="primary" data-a="next">下一屏</button><button class="ghost" data-a="clear">清屏</button></div>'+
+        '<div class="castbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+          '<button data-a="prev">上一屏</button><button data-a="next">下一屏</button>'+
+          '<button class="'+(S.article.cast?'':'primary')+'" data-a="present">'+(S.article.cast?'结束投屏':'开始投屏')+'</button>'+
+          '<span style="margin-left:auto;font-size:12px;color:var(--muted)">'+(S.article.cast?'● 已上屏 · 第 '+(S.article.page+1)+' 屏':'○ 预览中 · 尚未上屏')+'</span>'+
+        '</div>'+
       '</div></div>';
     } else {
       html = '<div class="stage"><div class="castbox">'+
@@ -369,7 +394,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       S.music.pos += 250;
       var d=(S.music.items[S.music.idx]||{dur:245000}).dur;
       if(S.music.pos >= d){
-        if(S.music.idx < S.music.items.length-1){ S.music.idx++; S.music.pos=0; toast('自动播放清单下一首'); render(); }
+        if(S.music.idx < S.music.items.length-1){ S.music.pos=0; S.music.playing=false; toast('本曲结束：不自动续播，点下一首继续'); render(); }
         else { S.music.playing=false; S.music.pos=0; toast('已到清单末尾'); render(); }
       }
       renderProgress();
@@ -379,7 +404,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
   // ── 事件 ──
   document.querySelector('.seg').addEventListener('click', function(e){
     var b=e.target.closest('button[data-scene]'); if(!b) return;
-    if(S.termOnline===0 && b.dataset.scene!=='idle'){ /* 离线仍可点，但提示 */ }
+    if(S.termOnline===0 && b.dataset.scene!=='standby'){ /* 离线仍可点，但提示 */ }
     gotoScene(b.dataset.scene);
   });
 
@@ -401,9 +426,8 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       send({kind:'scene',scene:'music'}); send({kind:'play', idx:i, pos:0});
       toast('已从「'+arr[i].t+'」开始播放');
     } else {
-      S.article.idx=i; S.article.page=0; S.scene='article';
-      send({kind:'scene',scene:'article'}); send({kind:'article', idx:i, page:0});
-      toast('已定位到「'+arr[i].t+'」');
+      S.article.idx=i; S.article.page=0; S.article.cast=false; S.scene='article';
+      toast('已在预览：「'+arr[i].t+'」 · 点「开始投屏」才上屏');
     }
     render();
   });
@@ -438,16 +462,28 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       var k2=a.dataset.a;
       if(k2==='next'){ S.article.page++; }
       if(k2==='prev'){ S.article.page=Math.max(0,S.article.page-1); }
-      if(k2==='clear'){ S.scene='idle'; send({kind:'scene',scene:'idle'}); }
-      send({kind:'article', idx:S.article.idx, page:S.article.page});
+      if(k2==='present'){
+        S.article.cast = !S.article.cast;
+        if(S.article.cast){ S.scene='article'; send({kind:'scene',scene:'article'}); send({kind:'article',idx:S.article.idx,page:S.article.page,cast:true}); toast('已投出到教室屏幕'); }
+        else { S.scene='standby'; send({kind:'scene',scene:'standby'}); toast('已结束投屏：屏幕回待机'); }
+        render(); return;
+      }
+      if(S.article.cast) send({kind:'article', idx:S.article.idx, page:S.article.page, cast:true});
+      render(); return;
+    }
+    var sb=e.target.closest('button[data-sb]');
+    if(sb){
+      S.standby.mode = sb.dataset.sb;
+      send({kind:'standby', mode:S.standby.mode});
+      toast(S.standby.mode==='blank'?'已黑屏（内容不泄露；学生仍看得见操作）':'已切回主题大图');
       render(); return;
     }
     if(e.target.id==='castToggle'){
       S.cast.text = (document.getElementById('castText')||{}).value || S.cast.text;
       S.cast.active = !S.cast.active;
-      send({kind:'cast', active:S.cast.active, text:S.cast.text, scene:(S.cast.active?'cast':'idle')});
+      send({kind:'cast', active:S.cast.active, text:S.cast.text, scene:(S.cast.active?'cast':'standby')});
       toast(S.cast.active?'板书已投出':'已结束板书（屏幕回待机）');
-      if(!S.cast.active) S.scene='idle';
+      if(!S.cast.active) S.scene='standby';
       render(); return;
     }
     if(e.target.id==='castPick') toast('图片 / PDF 上传走 R2 预签名（原型不实现）');
@@ -527,7 +563,8 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       toast('教室屏幕已绑定：本码已作废，接第二台请点 ⟳ 生成新码');
       beat();
     }
-    if(d.kind==='audioBlocked') toast('教室屏幕需点一下才能出声（ack 4002）', true);
+    // V2.1：显示端无音频，audioBlocked 已删除
+    if(d.kind==='standby'){ S.standby.mode=d.mode||'theme'; if(S.scene==='standby') render(); }
   };
 
   // ── 初始化 ──

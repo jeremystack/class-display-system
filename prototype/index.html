@@ -3,58 +3,66 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CDS 原型 V2.0</title>
+<title>CDS 原型 V2.1</title>
 <style>
 :root{--surface:#0f1115;--raised:#171a21;--border:#262b36;--text:#e6e8ee;--muted:#9aa3b2;--brand:#2563eb}
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;background:radial-gradient(1200px 600px at 20% -10%,#1c2740,#0f1115 60%);color:var(--text);
   font:15px/1.6 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;display:flex;align-items:center;justify-content:center;padding:6vh 5vw}
-.wrap{max-width:960px;width:100%}
+.wrap{max-width:1040px;width:100%}
 h1{margin:0 0 .3rem;font-size:1.6rem;letter-spacing:.02em}
 .sub{color:var(--muted);margin:0 0 2rem;font-size:.92rem}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
 a.card{display:block;text-decoration:none;color:inherit;background:var(--raised);border:1px solid var(--border);border-radius:16px;padding:22px;transition:border-color .15s,transform .15s}
 a.card:hover{border-color:#3a4a6a;transform:translateY(-2px)}
 a.card h2{margin:0 0 .4rem;font-size:1.08rem}
 a.card p{margin:0;color:var(--muted);font-size:.88rem}
 .badge{display:inline-block;font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:2px 9px;margin-bottom:.9rem}
+.badge.new{color:#8ab4f8;border-color:#243a63}
 .note{margin-top:2rem;padding:16px 18px;border:1px solid var(--border);border-radius:14px;background:rgba(23,26,33,.6);color:var(--muted);font-size:.86rem}
 .note b{color:var(--text)}
 .note ol{margin:.6rem 0 0;padding-left:1.2rem}
-.note li{margin:.3rem 0}
+.note li{margin:.35rem 0}
+.warn{margin-top:14px;padding:12px 14px;border:1px solid #5a3f1a;border-radius:12px;background:rgba(60,40,12,.5);color:#ffd9a8;font-size:.84rem}
 code{font:12px ui-monospace,monospace;background:#0b0d11;border:1px solid var(--border);border-radius:6px;padding:1px 6px;color:#cbd5e1}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Class Display System · 原型 V2.0</h1>
-  <p class="sub">控制台出码 · 显示端输码 · 三场景互斥 · 显示端全被动 + 样式下发（2026-11-18 / CO-2026-11-18-01）</p>
+  <h1>Class Display System · 原型 V2.1</h1>
+  <p class="sub">音频在控制页 · 四场景（待机 / 音乐 / 文章 / 板书）· 单屏模式 · 文章两步投屏 · 样式按场景分域（2026-11-18 / CO-2026-11-18-03）</p>
 
   <div class="grid">
     <a class="card" href="./console.html">
       <span class="badge">控制台 · 一屏</span>
-      <h2>打开控制台原型 →</h2>
-      <p>顶栏控制码 + 终端在线数；音乐 / 文章 / 板书互斥切换；今日预选清单；样式下发表单。</p>
+      <h2>打开控制台 →</h2>
+      <p>控制码 + 终端计数；四场景互斥；今日预选；待机主题（大图/黑屏）；文章「开始/结束投屏」；按场景下发样式。</p>
+    </a>
+    <a class="card" href="./screen.html">
+      <span class="badge new">新增 · 显控一体</span>
+      <h2>打开单屏模式 →</h2>
+      <p>一台电脑 + HDMI 复制：全屏内容 + 迷你控制条（点即播/即投/下一页/黑屏）。不需要输控制码。</p>
     </a>
     <a class="card" href="./display.html">
-      <span class="badge">显示端 · 两态</span>
-      <h2>打开显示端原型 →</h2>
-      <p>输码态（含长按 3 秒重置）；内容态零控件；样式即时生效；码失效自动回输码页。</p>
+      <span class="badge">显示端 · 被动</span>
+      <h2>打开显示端 →</h2>
+      <p>输码态；待机主题两形态（大图 / 纯黑）；内容态零控件；<b>无音频</b>（歌词由控制页时基驱动）。</p>
     </a>
   </div>
 
   <div class="note">
-    <b>怎么演示（两个页面开在同一个浏览器/同一域名下即可互相驱动）</b>
+    <b>怎么演示（页面开在同一浏览器 / 同一域名下即可互相驱动）</b>
     <ol>
-      <li>先开控制台，记下顶栏控制码和它的<b>剩余有效期</b>（15 分钟、单次消费）。</li>
-      <li>再开显示端，输入该码 → 确认 → 进入内容态（这一步同时解锁音频）；<b>该码随即作废</b>。</li>
-      <li>要接第二块屏：回控制台点 <code>⟳</code> 生成新码（已连终端不掉线），再在新屏输入。</li>
-      <li>回控制台点「音乐 / 文章 / 板书」或点预选条目 → 显示端跟着变，无刷新。</li>
-      <li>控制台底部「显示样式」改字号/字体/背景 → 下发 → 显示端即时变化。</li>
-      <li>控制台点「全部解绑」→ 显示端回到输码页并提示「控制码已失效，请重新输入」。</li>
+      <li>控制台记下控制码（15 分钟、单次消费）→ 显示端输码 → 进<b>待机</b>（主题大图或黑屏）。</li>
+      <li>控制台点「待机 → 黑屏」→ 显示端变纯黑；再点回「主题大图」。</li>
+      <li>点预选里的曲目 → <b>即播</b>（声音在控制台这台机器，显示端只跟着变歌词）。曲终<b>不自动续播</b>。</li>
+      <li>点经文 → 只是<b>预览</b>（屏幕上仍是待机）→ 点「开始投屏」才上屏 → 「结束投屏」回待机，再次投出从原位继续。</li>
+      <li>把字号从 1.15 拉到 1.6 → 显示端重排、页码总数变化、跨页处页脚出现「续」，正文不被插入字符。</li>
+      <li>新开 <code>screen.html</code>：单屏模式演示点条目即播/即投、迷你条 3s 淡出、黑屏、退出。</li>
     </ol>
-    原型不含构建产物与外部依赖（CSS/JS 全内联，断网可开）；真实联调以 <code>docs/前端设计-V2.0.md</code> 为准。
+    <div class="warn"><b>两条物理约束（不是 bug）</b>：① 显控一体＝HDMI 复制，学生看得见这一屏（含控制条与按黑屏的动作），「黑屏」只保证内容不泄露；② 复制模式下无法同时显示 PPT——要放 PPT 就导出 PDF 走板书场景。</div>
+    <div style="margin-top:10px">原型单文件自包含（CSS/JS 全内联、无外部 CDN，断网可开）；真实联调以 <code>docs/前端设计-V2.1.md</code> 为准。</div>
   </div>
 </div>
 </body>

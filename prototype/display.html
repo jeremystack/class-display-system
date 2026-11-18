@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CDS 显示端原型 V2.0（输码态 / 内容态）</title>
+<title>CDS 显示端原型 V2.1（输码态 / 待机主题 / 内容态）</title>
 <style>
 :root{
   --cds-bg:#000; --cds-fg:#e8ecf2; --cds-fg-muted:#a9b3c2; --cds-accent:#8ab4f8;
@@ -56,6 +56,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
 .progress i{display:block;height:100%;background:var(--cds-accent);border-radius:99px;transition:width .25s linear}
 
 .article{height:100%;display:flex;flex-direction:column}
+.article .foot{display:flex;justify-content:flex-end;font-size:.68rem;opacity:.5;min-height:1.4em}
 .article .head{color:var(--cds-fg-muted);font-size:.8rem;letter-spacing:.06em;margin-bottom:2.5vh}
 .article .head b{color:var(--cds-fg);font-size:1rem;margin-right:.8rem}
 .body{flex:1;overflow:hidden;font-family:var(--cds-font-body);
@@ -119,7 +120,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   var LS = window.localStorage, BC = ('BroadcastChannel' in window) ? new BroadcastChannel('cds-proto') : null;
   var $ = function(id){ return document.getElementById(id); };
   var DEBUG = /[?&]debug=1/.test(location.search);
-  var ACTX = null, unlocked = false, sysTimer = null;
+  var sysTimer = null;                    // V2.1：显示端无音频，不再有 AudioContext / unlocked
 
   function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
   function fmt(ms){ var s=Math.max(0,Math.floor(ms/1000)); return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
@@ -153,9 +154,9 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   setInterval(beat, 1000);
 
   // ── 数据 ──
-  var S = { scene:'idle', music:{ idx:0, playing:false, pos:0, items:[
+  var S = { scene:'standby', standby:{ mode:'theme' }, music:{ idx:0, playing:false, pos:0, anchor:null, items:[
       { t:'我心灵得安宁', m:'4:05', dur:245000 },{ t:'奇异恩典', m:'3:42', dur:222000 },{ t:'靠近主', m:'5:10', dur:310000 }]},
-    article:{ idx:0, page:0, items:[{t:'诗篇 23 章',v:'诗篇',ch:23},{t:'约伯记 3 章',v:'约伯记',ch:3}]},
+    article:{ idx:0, page:0, pageCount:0, cast:false, items:[{t:'诗篇 23 章',v:'诗篇',ch:23},{t:'约伯记 3 章',v:'约伯记',ch:3}]},
     cast:{ active:false, text:'' }
   };
   try{
@@ -168,6 +169,44 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     23:[['1','耶和华是我的牧者，我必不致缺乏。'],['2','他使我躺卧在青草地上，领我在可安歇的水边。'],['3','他使我的灵魂苏醒，为自己的名引导我走义路。'],['4','我虽然行过死荫的幽谷，也不怕遭害，因为你与我同在。'],['5','在我敌人面前，你为我摆设筵席；你用油膏了我的头，使我的福杯满溢。'],['6','我一生一世必有恩惠慈爱随着我，我且要住在耶和华的殿中，直到永远。']],
     3:[['1','此后，约伯开口咒诅自己的生日。'],['2','说：愿我生的那日和说怀了男胎的那夜都灭没。'],['3','愿那日变为黑暗；愿神不从上面寻找它。']]
   };
+
+  // ── 分页：渲染高度实测（V2.1 ⑦；页码只做展示，状态是 anchor） ──
+  var pages=[], pagesKey='', measuring=false, pagesDirty=false;
+  function measurePages(){
+    var a=S.article.items[S.article.idx]||{ch:23};
+    var vs=VERSES[a.ch]||VERSES[23];
+    var body=document.querySelector('.article .body');
+    if(!body) return;
+    var H=body.clientHeight; if(H<40) return;
+    var cs=getComputedStyle(body);
+    var ruler=document.createElement('div');
+    ruler.style.cssText='position:absolute;visibility:hidden;left:-9999px;top:0;width:'+body.clientWidth+
+      'px;font-family:'+cs.fontFamily+';font-size:'+cs.fontSize+';line-height:'+cs.lineHeight;
+    document.body.appendChild(ruler);
+    var out=[], cur=[], h=0;
+    vs.forEach(function(v){
+      var p=document.createElement('p'); p.style.margin='0 0 .9em';
+      p.innerHTML='<span class="sn">'+v[0]+'</span>'+esc(v[1]);
+      ruler.appendChild(p);
+      var ph=p.getBoundingClientRect().height;
+      if(h+ph<=H){ cur.push(v); h+=ph; return; }
+      if(cur.length){ out.push({verses:cur,cont:true}); cur=[]; h=0; }
+      var text=v[1], lo=1, hi=text.length-1, cut=hi;
+      while(lo<=hi){ var mid=(lo+hi)>>1;
+        p.innerHTML='<span class="sn">'+v[0]+'</span>'+esc(text.slice(0,mid));
+        if(p.getBoundingClientRect().height<=H){ cut=mid; lo=mid+1; } else { hi=mid-1; } }
+      out.push({verses:[[v[0],text.slice(0,cut)]],cont:true});
+      cur.push([v[0],text.slice(cut)]);            // 正文不插字符，跨页标记只在页脚
+      p.innerHTML='<span class="sn">'+v[0]+'</span>'+esc(cur[0][1]);
+      h=p.getBoundingClientRect().height;
+    });
+    if(cur.length) out.push({verses:cur,cont:false});
+    ruler.remove();
+    pages = out.length?out:[{verses:[],cont:false}];
+    var k=S.article.idx+'/'+pages.length+'/'+S.article.page;
+    if(k!==pagesKey){ pagesKey=k; pagesDirty=true; }
+    if(S.article.page>=pages.length) S.article.page=pages.length-1;
+  }
 
   // ── 内容渲染（无任何控件） ──
   function render(){
@@ -185,27 +224,42 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
         '<div class="progress"><i id="pbar" style="width:'+Math.min(100,(S.music.pos/it.dur)*100).toFixed(1)+'%"></i></div>';
     } else if(S.scene==='article'){
       var a=S.article.items[S.article.idx]||{t:'诗篇 23 章',v:'诗篇',ch:23};
-      var vs=VERSES[a.ch]||VERSES[23];
-      var start=S.article.page*3, slice=vs.slice(start,start+3);
-      html='<div class="article"><div class="head"><b>'+esc(a.t)+'</b>第 '+(S.article.page+1)+' 屏</div>'+
-        '<div class="body">'+slice.map(function(v){return '<p><span class="sn">'+v[0]+'</span>'+esc(v[1])+'</p>';}).join('')+'</div></div>';
+      var pg=pages[S.article.page]||{verses:[]};
+      html='<div class="article"><div class="head"><b>'+esc(a.t)+'</b><span>第 '+(S.article.page+1)+' / '+Math.max(1,pages.length)+' 屏</span></div>'+
+        '<div class="body">'+(pg.verses||[]).map(function(v){return '<p><span class="sn">'+v[0]+'</span>'+esc(v[1])+'</p>';}).join('')+'</div>'+
+        '<div class="foot">'+(pg.cont?'（续）':'')+'</div></div>';
     } else if(S.scene==='cast'){
       html='<div class="cast"><div class="paper">'+esc(S.cast.text||'（板书内容）')+'</div></div>';
+    } else if(S.scene==='standby'){
+      if(S.standby.mode==='blank'){
+        html='<div style="position:fixed;inset:0;background:#000"></div>';   // 纯黑：不让学生看到下一条内容
+      } else {
+        var now=new Date();
+        html='<div class="idle"><div class="room">主堂 · 显示终端</div><div class="clock" id="dclock">'+
+          String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+'</div>'+
+          '<div class="wait">等待控制台</div></div>';
+      }
     } else {
-      var now=new Date();
-      html='<div class="idle"><div class="room">主堂 · 显示终端</div><div class="clock">'+
-        String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+'</div>'+
-        '<div class="wait">等待控制台</div></div>';
+      html='';
     }
     c.innerHTML=html;
     $('content').hidden=false; $('entry').hidden=true;
     if(DEBUG) $('dbg').className='show';
+    if(S.scene==='article' && !measuring){
+      measuring=true;
+      requestAnimationFrame(function(){
+        pagesDirty=false; measurePages(); measuring=false;
+        if(pagesDirty){ pagesDirty=false; render(); }
+      });
+    }
   }
 
   // ── 进度推进 ──
   setInterval(function(){
     if(S.scene!=='music'||!S.music.playing) return;
-    S.music.pos+=250;
+    if(S.music.anchor){                                   // V2.1：pos = anchor.pos + (now - anchor.at)
+      S.music.pos = S.music.anchor.pos + (Date.now()-S.music.anchor.at);
+    } else { S.music.pos+=250; }
     var it=S.music.items[S.music.idx]||{dur:245000};
     if(S.music.pos>=it.dur){ S.music.pos=0; }
     var bar=$('pbar'); if(bar) bar.style.width=Math.min(100,(S.music.pos/it.dur)*100).toFixed(1)+'%';
@@ -238,15 +292,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   function confirmCode(){
     var code=codeValue();
     if(code.length!==6){ entryErr('请输入 6 位控制码'); return; }
-    try{
-      ACTX = ACTX || new (window.AudioContext||window.webkitAudioContext)();
-      if(ACTX.state==='suspended') ACTX.resume();
-      var o=ACTX.createOscillator(), g=ACTX.createGain();
-      g.gain.value=0.0001; o.frequency.value=440; o.connect(g); g.connect(ACTX.destination);
-      o.start(); o.stop(ACTX.currentTime+0.06);
-      unlocked = true;
-    }catch(e){ unlocked=false; }
-    if(DEBUG) $('dbg').textContent='audio unlocked='+unlocked;
+    // V2.1：显示端无音频 → 输码只做绑定，不再解锁音频（原 §10.6 整节删除）
 
     var o = null;
     try{ o = JSON.parse(LS.getItem('cds.codeObj')||'null'); }catch(e){}
@@ -266,9 +312,8 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     entryErr('');
     $('banner').hidden=true;
     if(BC){ BC.postMessage({kind:'ackBound', text:'教室屏幕已绑定'}); }
-    S.scene='idle'; render();
+    S.scene='standby'; render();
     sysOff();
-    if(!unlocked) sys('点击屏幕任意位置启用音频', true);
   }
   $('go').addEventListener('click', confirmCode);
 
@@ -311,12 +356,6 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
 
   if(/[?&]reset=1/.test(location.search)) clearCode();
 
-  // 任意触摸补解锁（autoplay 被拦时）
-  document.addEventListener('pointerdown', function(){
-    if(ACTX && ACTX.state==='suspended'){ ACTX.resume(); }
-    if(!unlocked && ACTX){ unlocked=true; sysOff(); }
-  });
-
   // ── 控制台下行 ──
   if(BC) BC.onmessage=function(ev){
     var d=ev.data||{};
@@ -326,6 +365,8 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
       $('content').hidden=true; $('entry').hidden=false; inputs.forEach(function(i){i.value='';}); return; }
     if(d.kind==='codeChanged'){ sys('控制码已刷新（已连终端不受影响）', false, 2500); return; }
     if(!LS.getItem('cds.bound')) return;
+    if(d.kind==='standby'){ S.standby.mode=d.mode||'theme'; if(S.scene==='standby') render(); return; }
+    if(d.kind==='article' && typeof d.cast==='boolean'){ S.article.cast=d.cast; }
     if(d.kind==='scene'){
       S.scene=d.scene;
       if(d.scene!=='music') S.music.playing=false;
@@ -333,27 +374,29 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     }
     if(d.kind==='play'){
       S.music.idx=d.idx||0; S.music.pos=d.pos||0; S.music.playing=true; S.scene='music'; render();
-      if(!unlocked){ sys('音频被浏览器拦截：请点一下屏幕', true); if(BC) BC.postMessage({kind:'audioBlocked'}); }
       return;
     }
     if(d.kind==='music'){
       if(typeof d.idx==='number') S.music.idx=d.idx;
       if(typeof d.pos==='number') S.music.pos=d.pos;
       if(typeof d.playing==='boolean') S.music.playing=d.playing;
+      S.music.anchor={ pos:S.music.pos, at:Date.now() };    // V2.1：本地按时基插值，不等逐条消息
       if(S.scene==='music'){
         var bar=$('pbar'), it=S.music.items[S.music.idx]||{dur:245000};
         if(bar) bar.style.width=Math.min(100,(S.music.pos/it.dur)*100).toFixed(1)+'%';
         if(d.action==='toggle'||d.action==='prev'||d.action==='next'){ var sub=document.querySelector('.music .sub'); if(sub) sub.textContent=(S.music.playing?'正在播放':'已暂停')+' · 第 '+(S.music.idx+1)+' 首'; }
       } else if(d.playing){ S.scene='music'; render(); }
-      if(!unlocked && S.music.playing){ sys('音频被浏览器拦截：请点一下屏幕', true); if(BC) BC.postMessage({kind:'audioBlocked'}); }
       return;
     }
     if(d.kind==='article'){
-      S.article.idx=d.idx||0; S.article.page=d.page||0; S.scene='article'; render(); return;
+      S.article.idx=d.idx||0; S.article.page=d.page||0;
+      if(typeof d.pageCount==='number') S.article.pageCount=d.pageCount;
+      if(typeof d.cast==='boolean'){ S.article.cast=d.cast; if(!d.cast){ S.scene='standby'; render(); return; } }
+      S.scene='article'; render(); return;
     }
     if(d.kind==='cast'){
       S.cast.text=d.text||''; S.cast.active=!!d.active;
-      S.scene = d.scene || (d.active?'cast':'idle'); render(); return;
+      S.scene = d.scene || (d.active?'cast':'standby'); render(); return;
     }
     if(d.kind==='volume'){ /* 原型不发声 */ return; }
   };
@@ -366,9 +409,11 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     setTimeout(function(){ inputs[0].focus(); }, 200);
   }
 
-  // 演示深链：?scene=music|article|cast|idle（仅原型，便于无需控制台单独看某一态）
-  var mScene = /[?&]scene=(music|article|cast|idle)/.exec(location.search);
-  if(mScene && LS.getItem('cds.bound')){ S.scene = mScene[1]; if(S.scene==='music' && /[?&]playing=1/.test(location.search)) S.music.playing=true; render(); }
+  // 演示深链：?scene=standby|music|article|cast｜?blank=1（黑屏）（仅原型，便于无需控制台单独看某一态）
+  var mScene = /[?&]scene=(standby|music|article|cast)/.exec(location.search);
+  if(mScene && LS.getItem('cds.bound')){ S.scene = mScene[1]; if(S.scene==='music' && /[?&]playing=1/.test(location.search)) S.music.playing=true;
+    if(/[?&]blank=1/.test(location.search)){ S.scene='standby'; S.standby.mode='blank'; }
+    render(); }
 
   if(DEBUG){ $('dbg').className='show'; $('dbg').textContent='debug · scene='+S.scene; }
 })();
