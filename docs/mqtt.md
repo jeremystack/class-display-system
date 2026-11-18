@@ -2,7 +2,7 @@
 
 ## 📋 文档信息
 
-- **版本**: V2.2.23（V2.2 基线 + V2.2.1…V2.2.23 订正，见 §9 变更记录）
+- **版本**: V2.2.24（V2.2 基线 + V2.2.1…V2.2.24 订正，见 §9 变更记录）
 - **更新日期**: 2026-11-18
 - **Broker**: EMQX Cloud
 - **传输**: MQTT 5.0 over WebSocket (WSS)
@@ -36,7 +36,8 @@ QoS     : 1
 ```
 - **`presence` 必须每屏一条叶（V2.2.23）**：`retain=true` ⇒ 共用一条会被**后写覆盖**；更要紧的是 LWT 由**每个连接各自注册**，共用时一台断线就把整户标成离线（`N` 从 2 跳 0）。
 - **LWT 必须在 CONNECT 时算得出（V2.2.23 的硬约束）**：LWT 主题写死在 CONNECT 包里，所以显示端**必须先知道 `userId` 再连**——启动顺序见 §6-2：先凭设备凭据自检拿到 `userId`，再注册 LWT 并 CONNECT。未绑定的设备没有 `userId`，**不注册 LWT、不发 `presence`**（它停在输码页，本来也不该计入在线台数）。
-- **被踢/换码失效后要清掉自己那两条 retained**：向 `state/{deviceId}`、`presence/{deviceId}` 各发一条**空 payload（retain=true）**。否则旧控制台会一直看到一台「停在那篇文章」的幽灵屏，与「已退出接管」互相矛盾。
+- **清 `state`/`presence` 两条 retained 是服务端的责任，不是显示端的（V2.2.24 纠错）**：撤销（踢出单台 / 刷新控制码 / 解绑）时由**服务端在同一个请求内**向 `u/{userId}/state/{deviceId}` 与 `u/{userId}/presence/{deviceId}` 各发一条**空 payload（retain=true）**，与写库、覆盖 `d/{deviceId}/bind` 快照同属一个事务边界（写库成功但没发干净 ⇒ 旧控制台会一直看到一台「停在那篇文章」的幽灵屏，与「已退出接管」互相矛盾）。
+  **不得把这件事写在显示端头上**（V2.2.23 曾这样写，本版作废）：被踢那台可能已经离线、可能停留在输码页不再发布任何消息、也可能是恶意端——**指望被处置方自己擦痕迹，痕迹就永远擦不掉**。显示端收到 `revoked` 只做本地收尾（清 `userId`/设备凭据/`boundAt`、退订 `cmd`、回输码页）。
 
 ### 1.3 ACL 约束
 
@@ -327,7 +328,7 @@ cds/v1/d/{deviceId}/bind              服务端 → 显示端           绑定�
 **显示端处理（写死）**
 
 - 收到 `bound`：本地 `userId` 相同且场景未变 ⇒ **幂等无操作**；否则设 `userId`、订阅 `u/{userId}/cmd`、发布一次 `state.report` 与 `presence:{online:true}`。**不得**把「收到 `bound`」当成「重置场景/字号」的信号（那是 `cmd` 的事）。
-- 收到 `revoked`：清本地绑定（`userId`/设备凭据/`boundAt`）、**退订 `u/{userId}/cmd`**、停止上报、清掉自己那两条 retained（向 `state/{deviceId}`、`presence/{deviceId}` 发空 payload，retain=true）、回输码页；`reason` 只决定文案（「控制码已重置」/「已被控制端移出」）。
+- 收到 `revoked`：清本地绑定（`userId`/设备凭据/`boundAt`）、**退订 `u/{userId}/cmd`**、停止上报、回输码页；`reason` 只决定文案（「控制码已重置」/「已被控制端移出」）。**不负责清 retained**——`state`/`presence` 两条已由服务端在同一请求内清空（见 §1.2、V2.2.24）；显示端此刻即使还连着，也**不得**再向这两条主题发布任何东西（含空 payload），否则会把服务端刚清的痕迹重新写出一条。
 - 收到**空 payload**（retained 被清）：等同「从未绑定」，回输码页。
 
 #### device.reload / device.restart（单机指令，必须带 `to`）
@@ -483,6 +484,11 @@ cds/v1/d/{deviceId}/bind              服务端 → 显示端           绑定�
 
 1. 重连间隔 3s / 6s / 12s / 24s，上限 5 次
 2. **启动/重连顺序（V2.2.23 定，不可颠倒）**：① 凭**设备凭据**自检（REST）拿到 `userId`（未绑定为 `null`）→ ② 用 `userId` 注册 LWT 再 CONNECT → ③ 订阅 `d/{deviceId}/bind`（**快照即判**：`bound` 继续；`revoked` 或无 retained ⇒ 回输码页，不再订阅 `cmd`）→ ④ 已绑定才订阅 `u/{userId}/cmd`，并主动重发一次 `state.report`。颠倒就会出两种错：先连后拿 `userId` ⇒ LWT 注册不到正确主题（`presence` 永远缺一条）；先订阅 `cmd` 再看快照 ⇒ 被踢的屏仍会执行一轮指令
+2-1. **REST 与 retained 快照冲突时：DB 为准（有效性），快照只负责即时性（V2.2.24 定，会出事故，必须写死）**：上面的顺序依赖「`d/{deviceId}/bind` 一定有 retained」，而 retained 可能因 TTL 过期、broker 侧丢失、主题发错而**不存在**。若此时 REST 说 `bound` 而快照没有消息，按「无 retained ＝ 从未绑定」判就会把一台**合法在用的屏踢回输码页**——第一次 retained 过期就是一次大规模误踢。
+   - **不得**以「无 retained」直接判未绑定。判据是 **REST 自检结果**（`userId` 是否为 `null`）；
+   - 快照**缺失**或与 REST **不符**时：以 REST 为准继续工作（`bound` 就订阅 `cmd`），并**由服务端补写**一条正确的 retained（`bound`/`revoked`）——快照是缓存，不是真相源；
+   - 反过来，REST 不可用（降级/超时）时**不得**靠快照判定「未绑定」而清掉本地凭据：保持现状重试，只按 §6-1 的节奏退避；
+   - 一致性方向唯一：**DB → retained 快照 → 显示端**。任何「快照否掉 DB」的实现都是错的方向。
 3. 服务端对离线设备缓存最近 1 条关键 `cmd`，上线后补发（`CleanStart=false`）
 4. MQTT 整体不可用时，控制端降级为轮询 `GET /api/v1/devices/{deviceId}/state`（2s），控制指令走 REST（API §5，`delivered=polling`）
 5. 降级期间文章导航只保证章节正确，不保证滚动位置一致
@@ -529,6 +535,7 @@ cds/v1/d/{deviceId}/bind              服务端 → 显示端           绑定�
 
 ## 9. 变更记录
 
+- **V2.2.24 (2026-11-18)**：**撤销后的 retained 清理责任从显示端移到服务端 + 「DB 为准」写死**（Chief 20:19 复核 V2.2.23 的两处收口；只动协议，原型仍冻结）。① **纠错**：V2.2.23 曾写「被踢后显示端要清掉自己那两条 retained」——被踢那台可能已离线、停在输码页不再发布、或本身是恶意端，**指望被处置方自己擦痕迹等于不擦**；改为**服务端在同一请求内向 `state/{deviceId}` / `presence/{deviceId}` 各发一条空 payload（retain=true）**，与写库、覆盖 `bind` 快照同一事务边界。显示端收到 `revoked` 只做本地收尾，**不得**再向这两条主题发布任何东西（含空 payload，否则把服务端刚清的痕迹写回一条）。② **新增规则**：REST 与 retained 快照冲突时 **DB 为准（有效性）、快照只负责即时性**——保留消息可能 TTL 过期／丢失／发错主题；**不得**以「无 retained」直接判未绑定，快照缺失或不符时以 REST 对齐并由服务端补写；REST 不可用时不得凭快照清凭据。一致性方向唯一：**DB → 快照 → 显示端**。③ 未动：主题形状、`to`、`device.bindState` 字段、§4.6 与六格表。
 - **V2.2.23 (2026-11-18)**：**主题改用户级（CO-2026-11-18-05：一用户一控制端、控制码长期有效）+ 绑定状态改「retained 快照」**（Jeremyzh 20:11 定案；本版只动协议，原型继续冻结）。① **主题形状**：`cmd` 改为 **`cds/v1/u/{userId}/cmd` 共用**（一控制端控同户全部屏，广播即达）；`state`/`presence`/`ack` 改为**每屏一条叶** `u/{userId}/state|presence|ack/{deviceId}`——`state`/`presence` 均 `retain=true`，共用即**后写覆盖**（`layout.availW` 1280→1152 / 1920→1728，共用后只剩最后一台，另一台必踩 §4.6 静默 `clamp`：锁 24 被收回 18），且 `presence` 的 LWT 每连接一条，共用时一台断线即整户判离线（`N` 从 2 跳 0）；`ack` 共用则须改 `ack` 形状并失去来源判定。旧形状 `cds/v1/{deviceCode}/...` **作废**。② **主题段禁止控制码**：码已是长期口令，进 topic 即向全部订阅者广播、retained 长期留存、ACL 规则随码轮换失效。③ §3 包络新增 **`to`**（`"*"`｜`<deviceId>`，`cmd` 必填，缺则丢弃＝fail-closed）：`device.reload`/`device.restart` 是单机指令，广播会把全户屏一起重启；非目标屏不执行也不回 `ack`。④ 新增 **`device.bindState`**（`cds/v1/d/{deviceId}/bind`，retain=true）：`state` ∈ `bound`/`revoked`，**无 retained ＝ 从未绑定**；retained 只承载**当前状态快照**，**不得**承载一次性「撤销事件」——事件型 retained 不会因被消费而消失，被踢的屏重绑成功后订阅瞬间又收到、再被踢（刷新→重绑→再踢死循环）；快照幂等、订阅即判，故「最晚时点 ＝ 重连后订阅到达时」成立。`code.revoked`/`code.issued` **从未进入本协议**（`grep` 命中 0），验收里「`code.revoked` 必须 retain」一条据此作废，改由本条承载。⑤ **`bind` 放设备命名空间**：显示端未绑定时不知道 `userId`，放进用户命名空间会形成鸡生蛋。⑥ **LWT 必须在 CONNECT 时算得出** ⇒ §6-2 定死启动顺序（先凭设备凭据取 `userId` → 注册 LWT → 订阅 `bind` 快照 → 已绑定才订阅 `cmd`）；被踢后显示端要清掉自己那两条 retained（空 payload），否则旧控制台看到幽灵屏。⑦ **P1 节号吃首行宽度：裁决＝悬挂**，内容盒宽不变 ⇒ `layout` 五项、`pageMap` 七字段、§4.6.1 `L(k)`、§4.6.3 六格表**全部不动**；**禁止**以「首行减 1 字」实现（那是被否的选项①）。⑧ §1.3/§2/§5 同步改形；12:28 那次 ACL 实测是**旧形状**上做的，能迁移的只有「`cds/#` 授予 QoS 0」（覆盖整棵新树，结论不变），新形状逐条**待运维重测**。**未动**：§4.6 字段表、§4.6.1 行数公式、§4.6.3 算例表、`pageMap` 7 字段、`effective` 三值、`layout` 五项。**零实现变更**（原型冻结中，本版只落协议）。
 
 - **V2.2.22 (2026-11-18)**：**派生字号必须随视口重派生（单屏原型补齐，换屏路径写进协议）**（产品 V2.1.19 验收 B11 实测判定）。① **缺陷**：`prototype/screen.html` 的派生字号只在 `applySceneStyle()` 内算一次（`round(innerHeight×0.067/4)*4`），`resize` 只调 `afterLayout()` ⇒ **窗口化↔全屏 / 旋屏后 `--fs` 停在旧视口值**（1280×800 派生 52px，切 1080p 全屏后仍 52，应 72）；更隐蔽的是 `layoutMetrics.fontSizePx` 会把旧值当「实测」上报。② **修法**：抽 `deriveFpx()`/`applyFpx()` ＋ `STYLE_FPX`（`auto` | 显式整数），`applySceneStyle()` 只置 `STYLE_FPX` 并调 `applyFpx()`；新增 `kickLayout()` 挂 `resize`/`orientationchange`/`fullscreenchange` 三处，`STYLE_FPX==='auto'` 时**先 `applyFpx()` 再 `afterLayout()`**（→ `render` → `layoutArticle` → `postMetrics` → `styleApplied` 全链重跑），显式字号不重派生。`screen.html` 35,196 → 36,218 B。③ **协议侧**：§4.6 补「派生量必须随视口重派生」一条（含 1280×800→1920×1080 实例），并明写「只重测 `H` 不重派生 `F`」属静默改值。④ `display.html` 无此缺陷（`kick()` 自 V2.2.15 已带 `applyFpx`），本版未动（42,352 B）。零协议形状变更。
