@@ -816,6 +816,11 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       var dragging = document.activeElement && document.activeElement.type==='range';
       if(S.scene==='article' && !dragging) render();
     }
+    if(d.kind==='styleApplied'){
+      var e=d.effective||{};
+      if(typeof e.charsPerLine==='number') S.style.charsPerLine=e.charsPerLine;
+      if(d.note) toast(d.note);
+    }
     if(d.kind==='castMetrics'){ S.cast.effPx=d.effectivePx; S.cast.setPx=d.settingPx; if(S.scene==='cast') render(); }
   };
 

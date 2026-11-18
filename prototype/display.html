@@ -161,6 +161,15 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     if(st.align) r.setProperty('--cds-align', st.align);
     if(st.charsPerLine) STYLE_CPL=Math.max(6, Math.min(40, +st.charsPerLine||12));
   }
+  // mqtt §4.6：effective 回带生效值，只走独立消息，不进 pageMap（pageMap 恒 7 字段）
+  function sendStyleApplied(note){
+    if(!BC) return;
+    var r=getComputedStyle(document.documentElement);
+    var epx=parseFloat(r.getPropertyValue('--cds-font-size'))||72;
+    var elh=parseFloat(r.getPropertyValue('--cds-line-height'))||1.75;
+    BC.postMessage({kind:'styleApplied',
+      effective:{fontSizePx:epx, lineHeight:elh, charsPerLine:STYLE_CPL}, note:note||''});
+  }
   try{ applyStyle(JSON.parse(LS.getItem('cds.style')||'null')); }catch(e){}
 
   // ── 心跳（供控制台算"在线终端数"） ──
@@ -356,8 +365,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
       px-=4; if(px<24){ px=24; break; }                    // 步长 4，不静默跨档
     }
     content.style.setProperty('--cds-font-size', px+'px'); layoutArticle(true);
-    if(BC) BC.postMessage({kind:'pageMap', idx:S.article.idx, unit:A.unit, pageIndex:A.pageIndex,
-      pageCount:A.pageCount, sectionIndex:A.sectionIndex, sectionCount:A.sectionCount, effectivePx:px});
+    sendStyleApplied('整章一屏：实际字号 '+px+'px（步长 4）');
     sys('整章一屏：实际字号 '+px+'px（按步长 4 下调）', false, 3200);
   }
 
@@ -437,7 +445,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   setInterval(function(){
     if(S.scene!=='music'||!S.music.playing) return;
     if(S.music.anchor){                                   // V2.1：pos = anchor.pos + (now - anchor.at)
-      S.music.pos = S.music.anchor.pos + (Date.now()-S.music.anchor.at);
+      S.music.pos = S.music.anchor.pos + (performance.now()-S.music.anchor.at);
     } else { S.music.pos+=250; }
     var it=S.music.items[S.music.idx]||{dur:245000};
     if(S.music.pos>=it.dur){ S.music.pos=0; }
@@ -540,6 +548,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     if(d.kind==='style'){ applyStyle(d.style); sys('样式已更新（不刷新页面）', false, 2200);
       // V2.1.5：字号是 px 且有量程变化，分页是「实测高度」——样式一变必须重排，否则旧页装不下新字号
       if(S.scene==='article') requestAnimationFrame(function(){ render(); });
+      sendStyleApplied('');
       if(BC) BC.postMessage({kind:'ack', text:d.style ? '样式已应用' : ''}); return; }
     if(d.kind==='revoke'){ LS.removeItem('cds.bound'); LS.removeItem('cds.credential'); LS.removeItem('cds.displayBeat'); $('banner').textContent='控制码已失效，请重新输入'; $('banner').hidden=false;
       $('content').hidden=true; $('entry').hidden=false; inputs.forEach(function(i){i.value='';}); return; }
@@ -560,7 +569,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
       if(typeof d.idx==='number') S.music.idx=d.idx;
       if(typeof d.pos==='number') S.music.pos=d.pos;
       if(typeof d.playing==='boolean') S.music.playing=d.playing;
-      S.music.anchor={ pos:S.music.pos, at:Date.now() };    // V2.1：本地按时基插值，不等逐条消息
+      S.music.anchor={ pos:S.music.pos, at:performance.now() };  // V2.2.11：单调时钟（Date.now 无 NTP 会跳，mqtt §4.1）
       if(S.scene==='music'){
         var bar=$('pbar'), it=S.music.items[S.music.idx]||{dur:245000};
         if(bar) bar.style.width=Math.min(100,(S.music.pos/it.dur)*100).toFixed(1)+'%';
