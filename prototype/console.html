@@ -57,11 +57,14 @@ h1,h2,h3{margin:0;font-weight:600}
 @media (pointer:coarse),(max-width:900px){
   button,.add,ol.items li{min-height:44px}
   .main{grid-template-columns:1fr;grid-template-rows:auto auto;overflow:auto}
-  .main .card.now{order:-1}   /* V2.1.9：手机上是当前场景先出，别让老师滚过预选才够得着「发送」 */
+  .main .card.now{order:-1;overflow:visible}   /* V2.1.9：当前场景先出，别让老师滚过预选才够得着「发送」 */
   .lists{max-height:none}
+  .castbox{height:auto}
+  /* 发送条吸在视口底部：一行行写板书时按钮始终在拇指下，不用来回滚 */
+  .castbar{position:sticky;bottom:0;z-index:6;margin-top:10px;padding:8px;border:1px solid var(--border);border-radius:12px;background:#0f131a}
   nav.tabs{flex-wrap:wrap}
   .stage{min-height:50vh}
-  #castText{min-height:36vh;font-size:17px;line-height:1.7}
+  #castText{min-height:30vh;font-size:17px;line-height:1.7}
   .castbar{gap:10px}
   .castbar .primary{flex:1 1 100%;min-height:52px;font-size:16px}
 }
