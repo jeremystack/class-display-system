@@ -57,6 +57,7 @@ h1,h2,h3{margin:0;font-weight:600}
 @media (pointer:coarse),(max-width:900px){
   button,.add,ol.items li{min-height:44px}
   .main{grid-template-columns:1fr;grid-template-rows:auto auto;overflow:auto}
+  .main .card.now{order:-1}   /* V2.1.9：手机上是当前场景先出，别让老师滚过预选才够得着「发送」 */
   .lists{max-height:none}
   nav.tabs{flex-wrap:wrap}
   .stage{min-height:50vh}
