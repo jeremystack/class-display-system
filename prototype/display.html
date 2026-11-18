@@ -14,7 +14,10 @@
 *{box-sizing:border-box}
 html{font-size:18px}
 html,body{margin:0;height:100%;overflow:hidden}
-body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)}
+/* V2.1.43：整页禁选/禁双击缩放（长按选字会跟隐藏退出抢事件）；输入框单独放开 */
+body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui);
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
+.digits input{user-select:text;-webkit-user-select:text;touch-action:auto}
 .stage{position:fixed;inset:0;display:flex;flex-direction:column}
 .view{position:absolute;inset:0;transition:opacity .18s ease}
 .view[hidden],#entry[hidden]{display:none}
@@ -43,7 +46,11 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
 .ring circle{fill:none;stroke:rgba(255,255,255,.45);stroke-width:3;stroke-dasharray:100.5;stroke-dashoffset:100.5}
 
 /* ── 内容态 ── */
-#content{padding:5vh 5vw}
+/* V2.1.43：#content 必须 flex 纵向——否则 .lyrics{flex:1} 无处可 flex，高度＝内容高（实测 1437px），
+   歌词永远单页、看不到滚动与居中 */
+#content{padding:5vh 5vw;display:flex;flex-direction:column;min-height:0}
+/* #content 的 id 选择器优先于 .view[hidden]，不给这条就**盖住了 hidden**：内容态永远显示、输码按钮点不到（实测踩到） */
+#content[hidden]{display:none}
 .music{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
 /* V2.1.5：去掉音轨封面。Jeremyzh：显示端只留顶部歌名 + 歌词；音轨徽标属功能，留在控制台。 */
 .music .t{font-size:1.5rem;font-weight:600;letter-spacing:.04em}
@@ -52,7 +59,10 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
    否则「当前句」会滚出 21vh 的可视区——那等于改了字号看不见歌词 */
 .lyrics{margin-top:3vh;flex:1;min-height:0;overflow:hidden;width:100%;
   display:flex;flex-direction:column;justify-content:center;align-items:center}
-.lyric{font-size:calc(var(--cds-font-size) * .78);line-height:1.5;color:rgba(255,255,255,.3);padding:.05em 0}
+/* V2.1.43：**删掉 padding:.05em 0**（V2.1.6 起欠的债）。连续滚动下步进差 0.1em 随行号线性累积，
+   第 60 行偏约 1.5 行、越唱越歪且不自愈（按页切时只差 1 行，所以当年没被发现）。
+   行盒严格＝字号×1.5（.lyric 硬写 line-height:1.5，不吃 --cds-line-height:1.75，见设计 §7.4） */
+.lyric{font-size:calc(var(--cds-font-size) * .78);line-height:1.5;color:rgba(255,255,255,.3)}
 .lyric.cur{color:var(--cds-accent)}
 .progress{position:absolute;left:5vw;right:5vw;bottom:4vh;height:4px;background:rgba(255,255,255,.14);border-radius:99px}
 .progress i{display:block;height:100%;background:var(--cds-accent);border-radius:99px;transition:width .25s linear}
@@ -84,7 +94,10 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
 .cast{height:100%;display:flex;align-items:center;justify-content:center}
 /* V2.1.6：板书用同一 fontSizePx（删掉 min(…, 6.5vh)：6.5vh 在 1080p＝70.2px，72px 以上全无效）；
    装不下时由 fitCast() 按步长 4 降档，并把实际生效值回报控制页——不静默缩 */
-.cast .paper{max-width:74vw;max-height:100%;overflow:hidden;font-family:var(--cds-font-body);
+/* V2.1.43：板书改竖向滚动（V2.1.38 反转 V2.1.34 的裁切）。scrollbar-gutter:stable 防自反馈：
+   滚动条出现 ⇒ 宽变窄 ⇒ 换行增多 ⇒ 更高 ⇒ 又要滚动条。注意这里**不动 .lyrics**——
+   歌词是 transform 视口（只动 transform），给它加滚动会与居中定位打架。 */
+.cast .paper{max-width:74vw;max-height:100%;overflow-y:auto;scrollbar-gutter:stable;overscroll-behavior:contain;font-family:var(--cds-font-body);
   font-size:var(--cds-font-size);
   line-height:var(--cds-line-height);text-align:var(--cds-align);white-space:pre-wrap}
 
@@ -98,6 +111,28 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   border-top:1px solid rgba(255,255,255,.12);font-size:.8rem;color:#ffd9a0;display:none;z-index:50}
 #sys.show{display:block}
 #sys.bad{background:rgba(58,20,20,.94);color:#ffd7d7}
+
+/* ── V2.1.43 屏端隐藏退出（设计 §3.4.1）──
+   热区**不可见**：不画图标、不写文案、不画环形进度（画了就等于告诉学生入口在哪）。
+   位置避开输码页 .reset-hint（右下 18px/14px）与板书滚动条轨道：贴右下角 88×88，
+   且仅在内容态启用（输码态该热区不绑动作）。 */
+#exit-hot{position:fixed;right:0;bottom:0;width:88px;height:88px;z-index:20;
+  background:transparent;touch-action:none;user-select:none;-webkit-touch-callout:none}
+#exit-hot[hidden]{display:none}
+/* 板书滚动条轨道（约 16px 宽）压在热区上时不清零是不行的，所以热区右侧留出轨道宽度 */
+#content.cast-on #exit-hot{right:16px}
+#exit-dlg{position:fixed;inset:0;z-index:60;background:rgba(8,10,14,.72);
+  display:flex;align-items:center;justify-content:center}
+#exit-dlg[hidden]{display:none}
+#exit-dlg .dlg{background:#171b22;border:1px solid rgba(255,255,255,.16);border-radius:14px;
+  padding:2rem 2.2rem;max-width:min(460px,86vw);text-align:center}
+#exit-dlg h2{margin:0 0 .6rem;font-size:1.15rem;font-weight:600}
+#exit-dlg p{margin:0 0 1.6rem;color:var(--cds-fg-muted);font-size:.9rem;line-height:1.7}
+#exit-dlg .row{display:flex;gap:.8rem;justify-content:center}
+#exit-dlg button{font:600 .95rem/1 var(--cds-font-ui);padding:.8rem 1.6rem;border-radius:10px;
+  border:1px solid rgba(255,255,255,.22);background:transparent;color:var(--cds-fg);cursor:pointer;min-height:48px}
+#exit-dlg button.danger{border-color:#a33;background:#3a1414;color:#ffd7d7}
+#exit-dlg button:focus-visible{outline:2px solid var(--cds-accent);outline-offset:2px}
 #dbg{position:fixed;right:10px;top:10px;font:11px/1.5 ui-monospace,monospace;color:rgba(255,255,255,.4);text-align:right;display:none}
 #dbg.show{display:block}
 </style>
@@ -132,6 +167,15 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   <!-- 内容态（零控件） -->
   <section class="view" id="content" hidden></section>
 
+  <!-- V2.1.43 屏端隐藏退出：右下角不可见热区，长按 3 秒 → 二次确认 → POST /devices/me/release -->
+  <div id="exit-hot" hidden aria-hidden="true"></div>
+  <div id="exit-dlg" hidden role="dialog" aria-modal="true" aria-labelledby="exit-dlg-t">
+    <div class="dlg">
+      <h2 id="exit-dlg-t">确定解除本屏接管？</h2>
+      <p>解除后需重新输入控制码。</p>
+      <div class="row"><button id="exit-no" type="button">取消</button><button id="exit-yes" type="button" class="danger">解除接管</button></div>
+    </div>
+  </div>
   <div id="sys"></div>
   <div id="dbg"></div>
 </div>
@@ -224,6 +268,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     }catch(e){ return ''; }
   }
   function beat(){
+    if(typeof syncExitHot==='function') syncExitHot();   // V2.1.43：热区只在内容态出现
     if(!LS.getItem('cds.bound')) return;
     LS.setItem('cds.displayBeat', String(Date.now()));
     try{
@@ -261,7 +306,13 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     if(saved){ S.music.items=saved.music; S.article.items=saved.article; }
   }catch(e){}
 
-  var LYRICS = ['宇宙广阔无垠','我心灵得安宁','如海洋般深沉','主恩典够我用','我安然躺卧'];
+  // V2.1.43：演示歌词由 5 行改**共用 24 行**（display 5 行 / screen 6 行不一致且 5 行配 N≈10 永远单页，
+  // 签字时根本看不到滚动与居中——一条「看起来对」的演示把两个缺陷一起盖住了）
+  var LYRICS = ['宇宙广阔无垠','我心灵得安宁','如海洋般深沉','主恩典够我用','我安然躺卧',
+    '他使我灵魂苏醒','引我走义路','我虽行过死荫幽谷','也不怕遭害','因你与我同在',
+    '你的杖你的竿','都安慰我','在我敌人面前','你为我摆设筵席','你用油膏了我的头',
+    '使我的福杯满溢','我一生一世','必有恩惠慈爱随着我','我且要住在','耶和华的殿中',
+    '直到永远','哈利路亚','赞美主名','阿们'];
   var VERSES = {
     23:[['1','耶和华是我的牧者，我必不致缺乏。'],['2','他使我躺卧在青草地上，领我在可安歇的水边。'],['3','他使我的灵魂苏醒，为自己的名引导我走义路。'],['4','我虽然行过死荫的幽谷，也不怕遭害，因为你与我同在。'],['5','在我敌人面前，你为我摆设筵席；你用油膏了我的头，使我的福杯满溢。'],['6','我一生一世必有恩惠慈爱随着我，我且要住在耶和华的殿中，直到永远。']],
     3:[['1','此后，约伯开口咒诅自己的生日。'],['2','说：愿我生的那日和说怀了男胎的那夜都灭没。'],['3','愿那日变为黑暗；愿神不从上面寻找它。']]
@@ -684,22 +735,61 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
 
   // CO-2026-11-18-05：控制码＝**每用户一张、存库、长期有效**（无 TTL、无「已使用」、无自动续码）。
   // 输码只做绑定；第二三台直接输同一张码即可（同一个 user 的多个控制端／同一控制端控多屏）。
-  function confirmCode(){
-    var code=codeValue();
-    if(code.length!==8){ entryErr('请输入 8 位控制码'); return; }
-    var expect = LS.getItem('cds.consoleCode');
-    if(!expect){ entryErr('未检测到控制端：请在同一浏览器打开控制台并生成控制码'); return; }
-    if(code !== expect){ entryErr('控制码无效，请与控制台核对'); return; }
+  // V2.1.43：绑定以**服务端返回**为准。配了 API 基点（`?api=https://…` 或 window.CDS_API）就走真接口：
+  // POST /devices/register（本版无鉴权）→ POST /devices/bind {code}。**不得**把同源 localStorage /
+  // BroadcastChannel 传的码当绑定依据——换设备、换浏览器、清缓存都会永远绑不上（Chief 22:10 指出的缺口）。
+  // 未配置基点时保留同源 localStorage 顶替（**仅原型演示**），但已删掉那条「在同一浏览器开控制台」的报错：
+  // 它本身就是在教人用假绑定。
+  var API_BASE=(function(){ var m=/[?&]api=(https?:\/\/[^&]+)/.exec(location.search);
+    return m?decodeURIComponent(m[1]):(window.CDS_API||''); })();
+  function onBound(code, info){
     LS.setItem('cds.bound', '1');
     LS.setItem('cds.code', code);            // 本屏持有的码副本：服务端只按**设备凭据**判有效，不按码查
-    LS.setItem('cds.credential', 'cred-'+Math.random().toString(36).slice(2,10));
     LS.setItem('cds.boundAt', String(Date.now()));
+    if(info && info.deviceId){ LS.setItem('cds.deviceId', info.deviceId); }
+    if(!LS.getItem('cds.credential')) LS.setItem('cds.credential', 'cred-'+Math.random().toString(36).slice(2,10));
     beat();
     entryErr('');
     $('banner').hidden=true;
     if(BC){ BC.postMessage({kind:'ackBound', text:'教室屏幕已接管', deviceId:deviceId()}); }
     S.scene='standby'; render();
     sysOff();
+  }
+  function bindViaServer(code){
+    var base=API_BASE.replace(/\/$/,''), tok=LS.getItem('cds.deviceToken')||'';
+    var auth={ 'Authorization':'Device '+tok, 'Content-Type':'application/json' };
+    var reg = tok ? Promise.resolve({ok:true, body:{deviceId:LS.getItem('cds.deviceId')||deviceId()}}) :
+      fetch(base+'/devices/register', {method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ label:'教室屏幕 '+deviceId().slice(-2), ua:navigator.userAgent }) })
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, status:r.status, body:j}; }); })
+      .then(function(res){
+        var b=res.body||{};
+        if(!res.ok || !b.deviceToken) throw {kind:'no_token', status:res.status};
+        LS.setItem('cds.deviceToken', b.deviceToken);
+        if(b.deviceId) LS.setItem('cds.deviceId', b.deviceId);
+        return {ok:true, body:b};
+      });
+    reg.then(function(){
+      return fetch(base+'/devices/bind', {method:'POST', headers:auth, body:JSON.stringify({code:code})})
+        .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, status:r.status, body:j}; }); });
+    }).then(function(res){
+      var b=res.body||{};
+      if(res.ok && (b.state==='bound' || b.ok===true)){ onBound(code, b); return; }
+      var e=b.error||b.code||'';
+      if(e==='rate_limited'||res.status===429){ entryErr('尝试过于频繁，请 1 分钟后再试'); return; }
+      if(e==='invalid'||e==='code_invalid'||res.status===400||res.status===4091){ entryErr('控制码无效，请与控制台核对'); return; }
+      entryErr('无法完成绑定，请稍后重试（'+(res.status||'—')+'）');
+    }).catch(function(err){
+      entryErr(err && err.kind==='no_token' ? '本机未能取得设备凭据，请重试或联系管理员' : '无法连接服务端，请检查网络后重试');
+    });
+  }
+  function confirmCode(){
+    var code=codeValue();
+    if(code.length!==8){ entryErr('请输入 8 位控制码'); return; }
+    if(API_BASE){ bindViaServer(code); return; }
+    var expect = LS.getItem('cds.consoleCode');
+    if(!expect || code !== expect){ entryErr('控制码无效，请与控制台核对'); return; }
+    onBound(code);
   }
   $('go').addEventListener('click', confirmCode);
 
@@ -743,6 +833,8 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
 
   // ── 控制台下行 ──
   function doRevoke(reason){
+    // V2.1.43：确认框开着时收到 revoked ⇒ 直接关框回输码页，**不再发** release（设计要求 §3.4.1）
+    if(typeof exitClose==='function') exitClose();
     // V2.1.23（CO-2026-11-18-04）：刷新控制码＝重置接管（reason=code_rotated）；全部解绑（reason=unbind）同走此路。
     // 已绑会话失效 → 清码回输码态；article/cast 不得停留（没人能翻页）→ 先落回 standby
     // V2.1.25：抽成函数，供「无 reason 的 codeChanged（旧页签）」走同一路径——两处实现分开写必然漂移
@@ -753,6 +845,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     $('banner').hidden=false;
     $('content').hidden=true; $('entry').hidden=false; inputs.forEach(function(i){i.value='';});
     sysOff(); setTimeout(function(){ inputs[0].focus(); }, 120);
+    if(typeof syncExitHot==='function') syncExitHot();
   }
   if(BC) BC.onmessage=function(ev){
     var d=ev.data||{};
@@ -825,9 +918,83 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     if(d.kind==='volume'){ /* 原型不发声 */ return; }
   };
 
+  // ── V2.1.43 屏端隐藏退出：右下角不可见热区，长按 3 秒 → 二次确认 → POST /devices/me/release ──
+  // 不变量（设计 §3.4.1）：热区不可见；位移 >10px / 页面滚动（含板书滚动条轨道）/ 提前抬手 一律清零；
+  // 吞 contextmenu 与 selectstart（平板长按会弹系统菜单）；released:false **不是失败**（回输码页、不报错）；
+  // 确认框期间收到 revoked ⇒ 关框且不发请求。
+  var hot=$('exit-hot'), dlg=$('exit-dlg'), exitT=null, exitX=0, exitY=0, exitArmed=false, dlgOpen=false;
+  function exitCancel(){ if(exitT){ clearTimeout(exitT); exitT=null; } exitArmed=false; }
+  function exitOpen(){ if(dlgOpen) return; dlgOpen=true; exitArmed=false; if(exitT){ clearTimeout(exitT); exitT=null; }
+    dlg.hidden=false; var n=$('exit-no'); if(n) n.focus(); }   // 默认焦点在「取消」：连按 Enter 不得误确认
+  function exitClose(){ if(!dlgOpen) return; dlgOpen=false; dlg.hidden=true; }
+  function syncExitHot(){
+    // 只在内容态启用热区：输码态右下的 .reset-hint 是「清除本地码」，同一手势不能两义（§3.4.1）
+    var on = !$('content').hidden && !!LS.getItem('cds.bound');
+    hot.hidden = !on;
+    document.getElementById('content').classList.toggle('cast-on', on && S.scene==='cast');
+  }
+  hot.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+  hot.addEventListener('selectstart', function(e){ e.preventDefault(); });
+  hot.addEventListener('pointerdown', function(e){
+    if(dlgOpen || hot.hidden) return;
+    e.preventDefault();
+    exitX=e.clientX; exitY=e.clientY; exitArmed=true;
+    exitT=setTimeout(function(){ exitT=null; if(exitArmed) exitOpen(); }, 3000);
+  });
+  hot.addEventListener('pointermove', function(e){
+    if(!exitArmed) return;
+    e.preventDefault();
+    if(Math.abs(e.clientX-exitX)+Math.abs(e.clientY-exitY) > 10) exitCancel();
+  });
+  ['pointerup','pointercancel','pointerleave'].forEach(function(t){ hot.addEventListener(t, function(){ exitCancel(); }); });
+  window.addEventListener('scroll', function(){ exitCancel(); }, true);   // 滚讲义不该弹解绑框
+  document.addEventListener('keydown', function(e){ if(dlgOpen && e.key==='Escape'){ e.preventDefault(); exitClose(); } });
+  $('exit-no').addEventListener('click', exitClose);
+  $('exit-yes').addEventListener('click', function(){
+    if(!dlgOpen) return;                     // 已被 revoked 关掉 ⇒ 不发请求
+    exitClose(); releaseSelf();
+  });
+  function exitToEntry(){
+    LS.removeItem('cds.bound'); LS.removeItem('cds.boundAt'); LS.removeItem('cds.displayBeat');
+    // V2.1.43：**不删** cds.deviceToken——release 按协议不撤 token（同一行可被重绑、不产生幽灵设备）。
+    // 启动判定必须走 GET /devices/me 的 state（配置了 API 基点时），不得按「本地有 token」进内容页。
+    S.scene='standby'; S.article.cast=false; S.cast.active=false; S.music.playing=false;
+    $('banner').textContent='本屏已解除接管，请重新输入控制码'; $('banner').hidden=false;
+    $('content').hidden=true; $('entry').hidden=false;
+    inputs.forEach(function(i){ i.value=''; }); entryErr('');
+    syncExitHot();
+    if(BC) BC.postMessage({kind:'ackUnbound', deviceId:deviceId()});
+    setTimeout(function(){ inputs[0].focus(); }, 120);
+  }
+  function releaseSelf(){
+    // released:true / released:false **都回输码页**：false ＝「现在本来就没绑定」，不是失败
+    if(!API_BASE){ exitToEntry(); return; }
+    var base=API_BASE.replace(/\/$/,''), tok=LS.getItem('cds.deviceToken')||'';
+    fetch(base+'/devices/me/release', {method:'POST', headers:{'Authorization':'Device '+tok}})
+      .then(function(r){ return r.json().catch(function(){ return {}; }); })
+      .then(function(){ exitToEntry(); })
+      .catch(function(){ sys('无法连接服务端，已按解除接管处理', false, 3000); exitToEntry(); });
+  }
+
+  // ── V2.1.43 双击全屏（必须用户手势，首屏无法自动全屏）。全屏＝视口变化 ⇒ 重发 resize 触发重排 ──
+  document.addEventListener('dblclick', function(e){
+    if(e.target.closest('input')||e.target.closest('button')||e.target.closest('#exit-dlg')) return;
+    var el=document.documentElement;
+    if(document.fullscreenElement || document.webkitFullscreenElement){
+      (document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);
+    }else{
+      (el.requestFullscreen||el.webkitRequestFullscreen||function(){}).call(el);
+    }
+  });
+  ['fullscreenchange','webkitfullscreenchange'].forEach(function(t){
+    document.addEventListener(t, function(){ window.dispatchEvent(new Event('resize')); });
+    document.addEventListener(t, syncExitHot);
+  });
+
   // ── 启动 ──
   if(LS.getItem('cds.bound')){
     render(); beat();
+    syncExitHot();
   } else {
     $('entry').hidden=false;
     setTimeout(function(){ inputs[0].focus(); }, 200);
