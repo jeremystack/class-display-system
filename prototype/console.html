@@ -433,7 +433,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
   function kickDevice(id){
     var name = id;
     S.devices.forEach(function(x){ if(x.id===id && x.label) name = x.label; });
-    send({kind:'binding.revoked', scope:'device', deviceId:id, reason:'kicked'});
+    send({kind:'device.bindState', state:'revoked', scope:'device', deviceId:id, reason:'kicked'});
     // 真机＝devices.revoked_at = now + 一条审计；原型用同源 localStorage 顶替（显示端重连时按此判有效）
     try{ var rv = JSON.parse(LS.getItem('cds.revoked')||'{}') || {}; rv[id] = Date.now(); LS.setItem('cds.revoked', JSON.stringify(rv)); }catch(e){}
     S.devices = S.devices.filter(function(x){ return x.id !== id; });
@@ -818,8 +818,9 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     clearTimeout(rotTimer); rotArmed = false; btn.textContent = '\u27F3';
     var c = newCode();
     setCode(c);
-    // 载体：retained 会话状态快照（bound/unbound）——不是一次性撤销指令，否则刷新后重绑的屏会被再踢
-    send({kind:'binding.revoked', scope:'user', reason:'code_rotated', code:c});
+    // 载体＝mqtt.md V2.2.23 的 device.bindState 快照（d/{deviceId}/bind, retain）——不是一次性撤销指令，
+    // 否则刷新后重绑的屏在订阅瞬间又收到、再被踢。原型用 BroadcastChannel 顶替 broker，事件名与协议同名。
+    send({kind:'device.bindState', state:'revoked', scope:'user', reason:'code_rotated'});
     S.devices = []; try{ LS.setItem('cds.devices','[]'); }catch(e){}
     renderDevices();
     toast(n ? ('已更新控制码：' + n + ' 台屏幕回输码页，请用新码重新输入')
@@ -835,7 +836,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       return;
     }
     clearTimeout(unbindTimer); unbindArmed=false; b.textContent='全部解绑';
-    send({kind:'binding.revoked', scope:'user', reason:'unbind'});
+    send({kind:'device.bindState', state:'revoked', scope:'user', reason:'unbind'});
     S.devices = []; try{ LS.setItem('cds.devices','[]'); }catch(e){} renderDevices();
     toast('已全部解绑：所有屏幕回到输码页', true);
   });

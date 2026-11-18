@@ -761,9 +761,10 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
       if(S.scene==='article') requestAnimationFrame(function(){ render(); });
       sendStyleApplied('');
       if(BC) BC.postMessage({kind:'ack', text:d.style ? '样式已应用' : ''}); return; }
-    // CO-2026-11-18-05：binding.revoked{scope:'user'|'device'} —— 刷新码＝user 全撤；踢单台＝device。
-    // 载体是 retained 会话状态快照（协议待定稿），不是一次性撤销指令。
-    if(d.kind==='binding.revoked'){
+    // CO-2026-11-18-05 / mqtt V2.2.23：device.bindState 是**状态快照**（d/{deviceId}/bind, retain），不是事件。
+    // 快照与本地状态相同 ⇒ 幂等无操作；state='revoked' 才清码回输码页（reason 只决定文案）。
+    if(d.kind==='device.bindState' && d.state==='bound'){ return; }   // 幂等：不闪界面、不重置场景、不重连
+    if(d.kind==='device.bindState'){
       if(d.scope==='device' && d.deviceId && d.deviceId !== deviceId()) return;   // 不是我这台，忽略
       doRevoke(d.reason || (d.scope==='device' ? 'kicked' : 'code_rotated')); return;
     }
