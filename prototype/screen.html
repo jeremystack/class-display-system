@@ -423,7 +423,7 @@ body{font-family:var(--ui)}
       sys('整章一屏：已到最小仍 '+A.pageCount+' 屏，样式已还原', 3200); return;
     }
     postPageMap();
-    sys('整章一屏：'+changed.join('、'), 3200);
+    sys('整章一屏：'+changed.join('、')+'（未含悬挂缩进）', 3200);
   }
 
   // ── 渲染 ──

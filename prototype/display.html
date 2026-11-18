@@ -509,7 +509,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     if(Math.abs(LHX-LH0)>1e-9) parts.push('行距 '+LH0.toFixed(2)+'→'+LHX.toFixed(2));
     if(String(STYLE_CPL)!==String(CP0)) parts.push('每行 '+CP0+'→'+STYLE_CPL+' 字');
     if(Math.abs(FX-F0)>1e-9) parts.push('字号 '+F0+'→'+FX+'px');
-    var note='整章一屏：'+(parts.length?parts.join('、'):'未动样式');
+    var note='整章一屏：'+(parts.length?parts.join('、'):'未动样式')+(parts.length?'（未含悬挂缩进：节内折行/续行缩 1 字符尚未实现）':'');
     postPageMap();
     sendStyleApplied(note);                                 // effective 三值只走 styleApplied，不进 pageMap
     sys(note, false, 3600);
