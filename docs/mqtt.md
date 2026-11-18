@@ -2,7 +2,7 @@
 
 ## 📋 文档信息
 
-- **版本**: V2.2.27（V2.2 基线 + V2.2.1…V2.2.27 订正，见 §9 变更记录）
+- **版本**: V2.2.28（V2.2 基线 + V2.2.1…V2.2.28 订正，见 §9 变更记录）
 - **更新日期**: 2026-11-18
 - **Broker**: EMQX Cloud
 - **传输**: MQTT 5.0 over WebSocket (WSS)
@@ -483,7 +483,8 @@ cds/v1/d/{deviceId}/bind              服务端 → 显示端           绑定�
 ⑨ **（V2.2.27 新增）`state.report.scene` 必填后，原型与验收须同步**：`display.html`/`screen.html` 的 `state.report` 与 `layoutMetrics` 都要带当前场景；验收若无该字段只能从 `nowPlaying`/`viewing`/`casting` 推断，判据要写明「推断」而非「实测」。
 ⑩ **（V2.2.27 新增）`--cds-font-ui` 尚未落地**：`applyStyle()` 只写了 `--cds-font-body`（`prototype/display.html` L178–180），`fontFamily.ui` 目前是「协议有、实现无」。CSS 里 `--cds-font-ui` 只有默认值，不会报错，属**静默不生效**。
 ⑪ **（V2.2.27 新增）「当前行高亮」是否默认开启**：`lyricAccent` 缺省＝`lyricFg` ⇒ 整段同色（③ 的字面要求）。若要保留现原型的「当前行用强调色」，控制台必须显式下发 `lyricAccent`；默认值要不要反过来，需一句裁决。
-⑫ **（V2.2.27 新增）歌词每屏行数是否上报**：`N = floor(可用高 ÷ (歌词字号 × 1.5))` 由布局决定，本版**不进协议、不上报**；若控制台要显示「歌词第 3/8 屏」，需另立字段（不得让控制台自算——同 §4.2「屏容量不得用公式算」）。
+⑫ **（V2.2.27 新增，V2.2.28 订正公式）歌词每屏行数是否上报**：`N = floor(H_lyrics ÷ (lyricFontSizePx × lineHeight))`（**两参**，行距取本场景生效的 `lineHeight`，不硬编码 1.5——理由见 §4.6.7 ③′）由布局决定，本版**不进协议、不上报**；若控制台要显示「歌词第 3/8 屏」，需另立字段（不得让控制台自算——同 §4.2「屏容量不得用公式算」）。
+⑬ **（V2.2.28 新增）歌词改「一页 N 行」前，原型有三件必改**（`prototype/display.html`，冻结中，由产品改）：① **测量前提**：`#content`（L46）是 `<section class="view">`，`.view{position:absolute;inset:0}`（L19）**不是 flex 容器**，故 `.music{flex:1}`（L47）与 `.lyrics{flex:1;min-height:0}`（L53）**都失效**——`.lyrics.clientHeight` 今天等于「3 行内容高」，拿它当 `N` 的分母会自我循环（行数变→高度变→`N` 变）。须先 `#content{display:flex;flex-direction:column}`（或 `.music{height:100%}`）。② **删 `.lyric` 的上下 padding**（L55 `padding:.05em 0`）并把 `line-height` 换成 `var(--cds-line-height)`；不删则实际行步进＝`lineHeight + 0.1em`（现 1.5+0.1=1.6em），按 `lineHeight` 算会多算行、末行被裁。③ **display 侧按页切**（`pageIndex = floor(lineIdx ÷ N)`，只渲染该页），不用滚动；滚动只在控制台那侧。详见 §4.6.7 ③′。
 
 #### 4.6.6 「整章一屏」的三档顺序（V2.2.14，Jeremyzh 12:43 定）
 
@@ -530,7 +531,15 @@ cds/v1/d/{deviceId}/bind              服务端 → 显示端           绑定�
 **③ 歌词（21:09 ②③）**：`lyricFontSizePx` 是**独立**字号，替代原型 `calc(var(--cds-font-size) × .78)` 的硬编码（`prototype/display.html` L55）——此前改歌词字号必须连正文一起改。缺省 `round4(fontSizePx × 0.78)`：1080p 派生 72 ⇒ **56px**，与现观感一致。
 `lyricFg` **作用于整段**：全部行、**含当前行**。**不提供**「只给某一行/某个字着色」的字段或路径——③ 的字面要求就是整段一个颜色。
 当前行的强调由 `lyricAccent` 承担，**缺省＝`lyricFg`**（即整段真正同色）。原型现在是「当前行 `--cds-accent`、其余 30% 白」，缺省值一变 ⇒ 若要保留「当前行更亮」，控制台必须**显式**下发 `lyricAccent`；未下发时**不得**自动提亮，否则「整段同色」永远做不到。
-歌词区每屏行数由显示端布局算（`N = floor(可用高 ÷ (歌词字号 × 1.5))`，行距沿用现货 `.lyric` 的 1.5），**不进协议、不上报**：`N` 是布局结果，不是样式参数（同 §4.2「屏容量不得用公式算」）。原型现在是固定 3 行（`LYRICS.slice(cur-1, cur+2)`），改滚动区是产品侧原型工作。
+
+**③′ 歌词排版（V2.2.28 订正：行距取 `lineHeight`，不硬编码 1.5）**
+
+- **行步进＝`lineHeight`**。`music` 的 `lineHeight` 是生效字段，且 `ack.effective` 要**回带**它（②）。歌词若仍写死 `line-height:1.5`，控制台会显示「行距 1.75 已生效」而屏上是 1.5——**回带一个不生效的值比不回带更坏**。同样，Jeremyzh 21:09 要的是「字号/行距/字色都放面板统一控制」，固定 1.5 会让行距滑块对歌词无效，正是他抱怨「看着没被控制」的同一种形态。
+- **必须同时删 `.lyric` 上下 padding**（`prototype/display.html` L55 `padding:.05em 0`）：行盒 ＝ `line-height × 字号` ＋ `0.1em` padding，按 1.5 算的步进实际是 **1.6em**，`N` 会**多算 1 行**；而 `.lyrics` 是 `justify-content:center`（L53）⇒ 超页时**上下同时裁**，末行被 `overflow:hidden` 横切。静默裁行正是本轮在灭的那类缺陷。删 padding 后步进＝`lineHeight`，公式才成立。
+- **公式（两参，取实测）**：`N = floor(H_lyrics ÷ (lyricFontSizePx × lineHeight))`，`H_lyrics` ＝ 歌词区**实测**高度。**不进协议、不上报**（`N` 是布局结果，不是样式参数，同 §4.2「屏容量不得用公式算」）；控制台要显示「歌词第 3/8 屏」需另立字段，不得自算。
+- ⚠️ **`H_lyrics` 现在取不到真实值（测量前提，须先修）**：`.music{flex:1}`（L47）与 `.lyrics{flex:1;min-height:0}`（L53）**都失效**——`#content` 是 `<section class="view">`，`.view{position:absolute;inset:0}`（L19）**不是 flex 容器**。`.lyrics.clientHeight` 今天＝「3 行内容高」，拿它当分母会**自我循环**。修法两行：`#content{display:flex;flex-direction:column}` 或 `.music{height:100%}`。**这条必须在改歌词之前做**，否则 `N` 无论用 1.5 还是 `lineHeight` 都测不准。
+- **display 侧是「按页切」，不是「滚动区」**：`pageIndex = floor(lineIdx ÷ N)`，只渲染该页 `N` 行。`overflow:hidden` **不得**用来滚动歌词——露出半行会丢上下文，观众追不上当前句。**滚动只发生在控制台那侧**（全篇、当前行居中、手动滚后 4s 内不抢）。两边语义不同，不得共用一个词。
+- 原型现状：固定 3 行（`LYRICS.slice(Math.max(0,cur-1), cur+2)`，L598）；旧的「±1」「±20」两套口径一并作废。
 
 **④ 板书不降档（21:09 ①）**：`cast` 用 `fontSizePx`（＝`--cds-font-size`）作**唯一**字号来源；装不下就**裁**。
 - `.paper` 保持 `overflow:hidden`，超出可视区的部分被裁掉。**不得**按步长 4 逐档下调——V2.1.6 的「装不下按步长 4 降档并回报实际值」**作废**（原话「板书不要再自动缩小，设多大就多大」）。
@@ -614,6 +623,8 @@ cds/v1/d/{deviceId}/bind              服务端 → 显示端           绑定�
 ---
 
 ## 9. 变更记录
+
+- **V2.2.28 (2026-11-18)**：**歌词行距取 `lineHeight`＋按页切＋测量前提**（产品 21:20–21:28 复核 V2.2.27 提出，三条逐条实读成立；只动本文件，原型仍冻结）。① **§4.6.7 ③ 的「×1.5」订正为两参公式** `N = floor(H_lyrics ÷ (lyricFontSizePx × lineHeight))`：`music` 的 `lineHeight` 是生效字段且 `ack.effective` 回带它，歌词写死 `line-height:1.5` 会让「回带的值不生效」，也与「面板统一控制」冲突（⑤ ⑫ 同步订正）。② **步进还差 `padding`**：`.lyric{padding:.05em 0}`（`display.html` L55）⇒ 实际步进 1.6em 而非 1.5em，按 1.5 算会多算 1 行、末行被裁（`.lyrics` 是 `justify-content:center`，上下同时裁）——须删 padding 并把 `line-height` 换成 `var(--cds-line-height)`。③ **「改滚动区」订正为「按页切」**：display 侧 `pageIndex = floor(lineIdx ÷ N)` 只渲染整页；滚动只在控制台那侧（露出半行会丢上下文）。④ **新增测量前提**：`#content` 是 `.view{position:absolute;inset:0}`，**不是 flex 容器**，故 `.music{flex:1}`（L47）/`.lyrics{flex:1;min-height:0}`（L53）失效，`.lyrics.clientHeight` ＝「3 行内容高」而非可用高，`N` 的分母不成立且会自我循环；须先 `#content{display:flex;flex-direction:column}`。⑤ §4.6.5 新增 ⑬（原型三件必改清单）。**未动**：字段表范围与默认、`ack.effective` 按场景给键、板书不降档、图片/PDF 不叠 `bg`、`scene` 四值、§4.6.1 `L(k)`、§4.6.3 六格表、`pageMap` 七字段、`layout` 五项。
 
 - **V2.2.27 (2026-11-18)**：**按场景样式：`scene`＋歌词独立字号/整段字色＋板书不降档＋图片/PDF 不叠背景色**（Jeremyzh 21:09 四条裁决，经 Chief 21:12 转达；只动协议，原型仍冻结）。① **`scene` 进 `display.style`**（`article` 缺省｜`music`｜`cast`｜`standby`，四值与 `0005` `scene_styles.scene` 注释同源）：按场景**分缓存、只在该场景生效**，切场景先套该场景缓存；未知值整包拒绝（`4002`）。存储侧早就按 `(owner_user_id, scene)` 建表，此前协议无此字段 ⇒ 「存得下、发不出去」。② **新增字段**：`styleVersion`（幂等键、服务端生成）、`fg`/`bg`（`#rrggbb` 唯一格式）、`fontFamily{ui,body}`（六值枚举）、`lyricFontSizePx`（12–120/4，缺省 `round4(fontSizePx×0.78)`，1080p ⇒ 56）、`lyricFg`（**整段**、含当前行）、`lyricAccent`（仅当前行，**缺省＝`lyricFg`**）。③ **`ack.effective` 按场景给键**：`article` 仍三值（V2.2.16 口径不变）、`music` 三值（末位 `lyricFontSizePx`）、`cast` 两值、`standby` `{}`——不得给无意义场景编造数值。④ **板书不降档**：V2.1.6 的「装不下按步长 4 降档并回报实际值」**作废**，改 `overflow:hidden` 裁切、`effective` **恒等**设定值；裁切是预期行为（验收不得据此判失败），仍自动缩字则**判失败**。与 §4.6.6「整章一屏」（用户点按钮、只作用于 `article`、会回滚）**不冲突**。⑤ **板书图片/PDF 不接受背景色控制**：样式只作用于文本层与画布背景，`bg` 不得叠到图上、不得加 `dim`；提案的 `background.dim` **不并入且不得默认套用**。⑥ **顺带订正示例包络**：旧示例 `{type:"cmd", payload:{kind:"style", payload:{…}}}` 与 §3「`type`＝`域.动作`」冲突，改为 `type:"display.style"` + 扁平 `payload`（同一文件两套包络，实现者按哪套都能说通）。⑦ **`state.report` 增 `scene`（必填）与 `castOverflow`（可选）**。⑧ 提案 `样式下发指令-提案.md` 不废弃，但**本表为唯一权威**；`letterSpacing`/`align`/`background.*`/`fgMuted`/`scene.set` 本期不并入（理由见 §4.6.7 ⑥，其中 `letterSpacing` 会整张废掉分页算术）。⑨ **重排触发条件由「三参」扩为「本场景任一字段」**：`music` 的 `lyricFontSizePx` 一变，每屏歌词行数 `N` 就变；`cast` 与歌词无分页时**不得**上报上一场景的 `pageMap` 旧值。**未动**：主题形状、`to`、`device.bindState`、§4.6.1 `L(k)`、§4.6.3 六格表、`pageMap` 七字段、`layout` 五项、`c × F ≤ W` 与 `clamp` 口径。
 
