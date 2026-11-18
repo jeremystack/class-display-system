@@ -628,7 +628,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       '</div></div>';
     } else {
       html = '<div class="stage stage-cast"><div class="castbox">'+
-        '<div class="casthead"><b>板书</b><span>独占全屏 · 满高编辑区'+(typeof S.cast.overflow==='number'?(S.cast.overflow>0?(' · <b style="color:#ffd9a0">超出可视区约 '+S.cast.overflow+'px</b>（屏上竖向滚动，滚动条常驻）'):' · <b style="color:#9be0a0">已装入可视区</b>'):'')+'</span>'+
+        '<div class="casthead"><b>板书</b><span>独占全屏 · 满高编辑区</span>'+
           '<label style="margin-left:auto">发送行数 <select id="castLines">'+
             [['3','3 行'],['5','5 行'],['8','8 行'],['10','10 行'],['all','全部']].map(function(o){
               return '<option value="'+o[0]+'"'+(String(S.cast.lines)===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+
@@ -948,11 +948,11 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       var _drag = document.activeElement && document.activeElement.type==='range';
       if(S.scene==='article' && !_drag) render();
     }
-    // V2.2.30：板书不再降档、不再回报 effectivePx；只回报「超出可视区多少 px」（state.report.castOverflow）
+    // Jeremyzh 21:57「板书溢出控制台不提示」+ mqtt V2.2.32：castOverflow 是 true|false 布尔、只作可观测量/诊断。
+    // 控制台刻意不读、不显示、不 toast、不角标（既不按 number、也不按 boolean 消费）；屏上滚动条本身就是提示。
+    // 若日后要 px 精度，那是「另一个字段」的立项，须开发先改协议形状（本版没有 overflowPx）。
     if(d.kind==='castMetrics'){
-      var _ov = (typeof d.castOverflow==='number') ? d.castOverflow : ((typeof d.overflowPx==='number') ? d.overflowPx : null);
-      if(_ov!==null) S.cast.overflow=_ov;
-      if(S.scene==='cast') render();
+      // 不消费：本分支故意留空（只为拦住通用分支），且不更新任何状态
     }
   };
 
