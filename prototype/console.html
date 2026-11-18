@@ -122,6 +122,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
   <header class="top">
     <div class="brand">CDS<small>教室显示 · 控制台</small></div>
     <div class="count zero" id="count" title="只读指示，不可点击"><span class="dot"></span><span id="countText">当前 0 个终端在线</span></div>
+    <div id="np" style="display:none;align-items:center;gap:8px;padding:4px 10px;border:1px solid #3a4356;border-radius:8px;font-size:12px;color:#cfd8e6"><span style="color:#8ab4f8">♪</span><span id="npTxt">—</span><button id="npStop" style="font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid #3a4356;background:transparent;color:#cfd8e6;cursor:pointer">停止</button></div>
     <div class="code">
       <span class="label">控制码</span><b id="codeText">482 913</b><span class="meta" id="codeMeta">剩 15:00</span>
       <button id="refreshCode" title="刷新控制码（已连终端不掉线）">⟳</button>
@@ -278,7 +279,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     if(scene === S.scene) return;
     S.scene = scene;
     if(scene === 'music' && S.music.playing === false && S.music.pos > 0) S.music.playing = true;
-    if(scene !== 'music') S.music.playing = false;
+    // V2.1.1：切画面不停音乐（音轨独立）。音乐只在用户点停止 / player.stop / 播完时停。
     send({kind:'scene', scene:scene});
     if(scene==='music') send({kind:'music', playing:S.music.playing, pos:S.music.pos, idx:S.music.idx});
     if(scene==='standby') send({kind:'standby', mode:S.standby.mode});
@@ -295,6 +296,18 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     document.querySelectorAll('.seg button').forEach(function(b){
       b.setAttribute('aria-selected', String(b.dataset.scene === S.scene));
     });
+    renderNP();
+  }
+
+  // V2.1.1：音轨独立——现在播的音乐不一定在音乐画面里，所以顶栏要常驻一条
+  function renderNP(){
+    var np=$('np'); if(!np) return;
+    var on = S.music.playing && S.scene !== 'music';
+    np.style.display = on ? 'inline-flex' : 'none';
+    if(on){
+      var it = S.music.items[S.music.idx] || {t:'—'};
+      $('npTxt').textContent = it.t + ' · ' + fmt(S.music.pos) + ' · 画面在「' + ({standby:'待机',article:'文章',cast:'板书'}[S.scene]||S.scene) + '」';
+    }
   }
 
   function renderLists(){
@@ -351,7 +364,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
         '</div>'+
         '<div class="extra"><span style="color:#8ab4f8">🔊 声音从本机输出</span><span>音量</span><input type="range" min="0" max="100" value="50" id="vol">'+
         '<button class="ghost" style="font-size:12px" data-m="track">切伴奏</button>'+
-        '<span class="ro">（切走场景时自动暂停并记住位置）</span></div>'+
+        '<span class="ro">（切走画面音乐继续；点「停止」才停）</span></div>'+
       '</div></div>';
     } else if(S.scene === 'article'){
       var a = S.article.items[S.article.idx] || {v:'诗篇',ch:23,t:'诗篇 23 章'};
@@ -390,7 +403,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
   }
 
   var timer = setInterval(function(){
-    if(S.scene==='music' && S.music.playing){
+    if(S.music.playing){
       S.music.pos += 250;
       var d=(S.music.items[S.music.idx]||{dur:245000}).dur;
       if(S.music.pos >= d){
@@ -508,6 +521,13 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
   });
 
   // ── 控制码 ──
+  // V2.1.1：顶栏常驻 now-playing 的「停止」——音乐是独立音轨，不需要先切回音乐画面
+  $('npStop').addEventListener('click', function(){
+    S.music.playing = false;
+    send({kind:'music', playing:false, pos:S.music.pos, idx:S.music.idx, action:'stop'});
+    toast('已停止播放（画面不动）'); render();
+  });
+
   $('refreshCode').addEventListener('click', function(){
     var c = String(Math.floor(100000+Math.random()*900000));
     setCode(c);

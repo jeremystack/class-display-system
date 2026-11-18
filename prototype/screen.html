@@ -113,6 +113,7 @@ body{font-family:var(--ui)}
     <button data-a="next">下一屏</button>
     <button data-a="present" class="danger" id="presentBtn">投出</button>
   </div>
+  <span id="np" class="np"></span>
   <span class="sep"></span>
   <div class="grp">
     <button id="blankBtn">黑屏</button>
@@ -242,6 +243,9 @@ body{font-family:var(--ui)}
     $('sepA').style.display = S.scene==='article' ? '' : 'none';
     $('presentBtn').textContent = S.article.cast ? '结束' : '投出';
     $('blankBtn').textContent = (S.scene==='standby' && S.standby.mode==='blank') ? '退出黑屏' : '黑屏';
+    // V2.1.1：音轨独立——音乐在播但画面不是音乐时，控制条上要能看见
+    $('np').textContent = S.music.playing ? ('♪ ' + ((S.music.items[S.music.idx]||{t:'—'}).t) + ' ' + fmt(S.music.pos)) : '';
+    $('np').style.cssText = S.music.playing ? 'font-size:12px;color:#8ab4f8;padding:0 8px;white-space:nowrap' : 'display:none';
     // 分页不在这里触发：切到文章 / resize / 字号变化时显式调用 afterLayout()
   }
   function clockText(){ var d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
@@ -292,7 +296,7 @@ body{font-family:var(--ui)}
   function goto(scene){
     if(scene===S.scene){ render(); if(scene==='article') afterLayout(); return; }
     S.scene=scene;
-    if(scene!=='music') S.music.playing=false;
+    // V2.1.1：切画面不停音乐（配乐朗诵）
     send({kind:'scene',scene:scene});
     render();
     if(scene==='article') afterLayout();
@@ -300,7 +304,7 @@ body{font-family:var(--ui)}
 
   // ── 进度推进（本机就是音频锚点；原型用计时器代替真实解码） ──
   setInterval(function(){
-    if(S.scene!=='music'||!S.music.playing) return;
+    if(!S.music.playing) return;
     S.music.pos+=250;
     var it=S.music.items[S.music.idx]||{dur:245000};
     if(S.music.pos>=it.dur){ S.music.playing=false; S.music.pos=it.dur; sys('本曲结束：停在 ended，不自动续播（① ）',2200); }
@@ -320,10 +324,10 @@ body{font-family:var(--ui)}
   // ── 控制台下行（与 console.html / display.html 共用通道） ──
   if(BC) BC.onmessage=function(ev){
     var d=ev.data||{};
-    if(d.kind==='scene' && d.scene){ S.scene=d.scene; if(d.scene!=='music') S.music.playing=false; render(); }
+    if(d.kind==='scene' && d.scene){ S.scene=d.scene; render(); }
     if(d.kind==='standby'){ S.standby.mode=d.mode||'theme'; save(); render(); }
     if(d.kind==='music'){ if(typeof d.idx==='number') S.music.idx=d.idx; if(typeof d.pos==='number') S.music.pos=d.pos;
-      if(typeof d.playing==='boolean') S.music.playing=d.playing; if(S.scene!=='music' && d.playing) S.scene='music'; render(); }
+      if(typeof d.playing==='boolean') S.music.playing=d.playing; render(); }
     if(d.kind==='article'){ if(typeof d.idx==='number') S.article.idx=d.idx; if(typeof d.page==='number') S.article.page=d.page;
       if(S.scene!=='article' && d.cast!==false) S.scene='article';
       if(typeof d.cast==='boolean'){ S.article.cast=d.cast; if(d.cast) S.scene='article'; }
