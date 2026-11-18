@@ -1,8 +1,8 @@
 # Class Display System 数据库设计文档
 
 ## 📋 文档信息
-- **版本**: V2.2.1
-- **更新日期**: 2026-11-18 20:26
+- **版本**: V2.2.2
+- **更新日期**: 2026-11-18 22:24
 - **数据库**: Cloudflare D1 (SQLite)
 
 ---
@@ -42,7 +42,7 @@ CREATE TABLE devices (
 - `device_code` 用于快速连接和验证
 
 > **V2.2.1 口径变更（CO-2026-11-18-05，一用户一控制端／控制码长期有效）：`devices.user_id` 与 `devices.bound_at` 自本版起停止写入、不再读取。**
-> 绑定状态唯一来源改为 `device_bindings(device_id, user_id, bound_at, revoked_at, updated_at)`（见 `migrations/0005` rev2 草案）；`devices.device_code` 降为历史列（新流程写哨兵值，**不得**用作授权维度——`'x'||device_id` 恒定可猜），控制码改由 `control_codes(user_id, code, rotated_at)` 承载（一用户一张、8 位数字、长期有效）。
+> 绑定状态唯一来源改为 `device_bindings(device_id, user_id, bound_at, revoked_at, updated_at)`（见 `migrations/0005_control_codes_and_styles.sql`，rev2 定稿；**DDL 不在本仓库**，由运维维护，sha256 与 promote 状态以 `migrations/README-0005.md` 台账为准）；`devices.device_code` 降为历史列（新流程写哨兵值，**不得**用作授权维度——`'x'||device_id` 恒定可猜），控制码改由 `control_codes(user_id, code, rotated_at)` 承载（一用户一张、8 位数字、长期有效）。
 > **为什么必须写在这里而不是只写在迁移注释里**：两处同时写＝同一事实两处定义，踢出时漏改一处，控制台与 REST 会各显示一个答案。`devices.user_id` / `bound_at` 两列留到 T-01 维护窗口的 12-step 重建时一并删除。
 
 ---
@@ -259,5 +259,6 @@ books ──> verses (book_id + chapter_sn，章为派生维度)
 
 ## 变更记录
 
+- **V2.2.2 (2026-11-18)**：**0005 指针改为「文件名＋运维台账」，并记明 DDL 不在本仓库**（零 schema 变更）。起因：`migrations/` 里原有那份 `0005_control_codes_and_styles.sql` 是 **CO-05 之前的旧模型**（`control_codes.code` 主键、`expires_at` 15min、`used_at` 一次性消费、**无** `device_bindings`），运维已将其移出应用路径（`docs/changes/superseded/0005_control_codes_and_styles.pre-co05.SUPERSEDED`，11,174 B），而本文档仍指向 `migrations/0005` rev2 草案 ⇒ 维护窗口照指针执行会落到废止模型（`GET /devices/me` 的三态与 `POST /devices/me/release` 将无表可依，`revoked_at` 在 `device_bindings` 里）。① 指针改为 `migrations/0005_control_codes_and_styles.sql`（rev2 定稿，逐字节复制、不改内容）；② 明确**本仓库不含 `migrations/` 目录**——DDL 由运维维护，sha256 与 apply 前后断言以 `migrations/README-0005.md` 为准；③ 同源修正 `api.md` V2.2.12、`mqtt.md` V2.2.31。**未动**：任何表结构、列、索引。④ 另记一条实现前提（运维 21:5x 提出、我确认）：rev2 **不含 `device_bindings` backfill**，故 apply 必须在**首次装机配对之前**——当前两库 `devices` 均 0 行，本次无需 backfill；一旦先做过配对，须先补 `INSERT OR IGNORE INTO device_bindings(device_id,user_id,bound_at,updated_at) SELECT device_id,user_id,bound_at,unixepoch() FROM devices WHERE user_id IS NOT NULL`，否则既有屏全部落成「从未绑定」。
 - **V2.2 (2026-11-17)**：落地裁决 D-01（章为派生维度不建表、唯一性落在经节粒度、章列表接口分页），补本轮编辑说明；版本与 `api.md` / `mqtt.md` 对齐。
 - **V2.1 (2026-11-17)**：按生产库 `wenzhang_volumes` / `wenzhang_verses` 校正结构，删除自建 `chapters` 表；文章流程改为阅读导航（人工阅读，无播放控制）。
