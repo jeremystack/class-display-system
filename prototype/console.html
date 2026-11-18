@@ -383,7 +383,12 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     LS.setItem('cds.codeObj', JSON.stringify(S.codeObj));
     LS.setItem('cds.consoleCode', S.codeObj.code);
   }
-  function setCode(c){ S.codeObj = { code:c }; saveCode(); renderCode(); }
+  function setCode(c){ S.codeObj = { code:c }; saveCode();
+    /* V2.1.50：原型演示链——api.md §4.2 说码不得持久化，所以屏不存码，只存「码修订号」。
+       换码时这里换一个随机修订号，显示端 checkBinding() 比对 cds.boundRev 后按 code_rotated 回输码页。
+       真机走服务端 device.bindState 快照（同一函数下面那条 send），这条只服务 ?api= 未配的演示。 */
+    try{ LS.setItem('cds.codeRev', 'r'+Date.now().toString(36)+Math.random().toString(36).slice(2,8)); }catch(e){}
+    renderCode(); }
   function newCode(){ return String(Math.floor(10000000+Math.random()*90000000)); }
   function renderCode(){
     var o = S.codeObj, meta = $('codeMeta');

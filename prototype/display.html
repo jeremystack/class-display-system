@@ -51,7 +51,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
 #content{padding:5vh 5vw;display:flex;flex-direction:column;min-height:0}
 /* #content 的 id 选择器优先于 .view[hidden]，不给这条就**盖住了 hidden**：内容态永远显示、输码按钮点不到（实测踩到） */
 #content[hidden]{display:none}
-.music{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.music{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
 /* V2.1.5：去掉音轨封面。Jeremyzh：显示端只留顶部歌名 + 歌词；音轨徽标属功能，留在控制台。 */
 .music .t{font-size:1.5rem;font-weight:600;letter-spacing:.04em}
 .music .sub{color:var(--cds-fg-muted);font-size:.8rem;margin-top:.5rem}
@@ -61,8 +61,9 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   display:flex;flex-direction:column;justify-content:center;align-items:center}
 /* V2.1.43：**删掉 padding:.05em 0**（V2.1.6 起欠的债）。连续滚动下步进差 0.1em 随行号线性累积，
    第 60 行偏约 1.5 行、越唱越歪且不自愈（按页切时只差 1 行，所以当年没被发现）。
-   行盒严格＝字号×1.5（.lyric 硬写 line-height:1.5，不吃 --cds-line-height:1.75，见设计 §7.4） */
-.lyric{font-size:calc(var(--cds-font-size) * .78);line-height:1.5;color:rgba(255,255,255,.3)}
+   行盒＝字号 × 场景 lineHeight（V2.1.50：此前硬写 1.5、不吃 --cds-line-height，
+   导致 ack.effective 回带的 1.75 与屏上行距不一致；开发 23:02 指出——写死等于回带一个不生效的值） */
+.lyric{font-size:calc(var(--cds-font-size) * .78);line-height:var(--cds-line-height,1.5);color:rgba(255,255,255,.3)}
 .lyric.cur{color:var(--cds-accent)}
 .progress{position:absolute;left:5vw;right:5vw;bottom:4vh;height:4px;background:rgba(255,255,255,.14);border-radius:99px}
 .progress i{display:block;height:100%;background:var(--cds-accent);border-radius:99px;transition:width .25s linear}
