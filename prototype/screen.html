@@ -281,6 +281,7 @@ body{font-family:var(--ui)}
     verifyModel(flow);
     applyView(silent);
     postMetrics();                      // V2.2.20：每次重排后上报一次几何（200ms 防抖）
+    if(_ackPending || !_ackSent){ _ackPending=false; _ackSent=true; sendStyleApplied(''); }
   }
 
   function buildPageStarts(H, lh, gap){
@@ -383,6 +384,20 @@ body{font-family:var(--ui)}
   // 否则控制台只能回退 1728 并标「估算」——三值方案在 D-3 上等于失效。
   // 五项取**同一帧**实测：availW/availH ＝ 正文块内容宽/高，fontSizePx/lineHeight 取计算值，
   // charsPerLine 取 auto 派生后的整数（cplNow 与渲染切行同源）。200ms 防抖合并同一波重排。
+  // V2.2.20（协议 §4.6 `ack.effective`）：D-3 单屏形态**必须回带生效三值**——
+  // 否则控制台发 style 后无从判断「锁的 24 有没有被 clamp 回 16」「auto 派生出多少」，
+  // 就是我们要打的「静默改值」。三值取根部 CSS 变量（`--fs` px / `--lh` 比率）
+  // 与 `cplNow()` 同一口径（`auto` 回派生出的整数，不回字符串 "auto"）。
+  var _ackPending=false, _ackSent=false;
+  function sendStyleApplied(note){
+    if(!BC) return;
+    var r=getComputedStyle(document.documentElement);
+    var epx=parseFloat(r.getPropertyValue('--fs'))||72;
+    var elh=parseFloat(r.getPropertyValue('--lh'))||1.75;
+    BC.postMessage({kind:'styleApplied',
+      effective:{fontSizePx:epx, lineHeight:elh, charsPerLine:cplNow(artBody())}, note:note||''});
+  }
+
   var _mt=null;
   function postMetrics(){
     if(!BC) return;
@@ -454,9 +469,11 @@ body{font-family:var(--ui)}
       root.setProperty('--lh', LH0); root.setProperty('--fs', F0+'px'); STYLE_CPL=CP0;
       rebuildArticle();                                   // V2.2.16：复原 cpl 后必须重切，别留 ② 档的行数
       layoutArticle(true); postPageMap();
+      sendStyleApplied('整章一屏：已到最小仍多屏，样式已还原');
       sys('整章一屏：已到最小仍 '+A.pageCount+' 屏，样式已还原', 3200); return;
     }
     postPageMap();
+    sendStyleApplied('整章一屏：'+changed.join('、'));   // 三档动过的值必须回带
     sys('整章一屏：'+changed.join('、'), 3200);
   }
 
@@ -607,7 +624,7 @@ body{font-family:var(--ui)}
       if(typeof d.cast==='boolean'){ S.article.cast=d.cast; if(d.cast) S.scene='article'; }
       render(); }
     if(d.kind==='cast'){ S.cast.text=d.text||''; S.cast.active=!!d.active; S.scene=d.active?'cast':'standby'; render(); }
-    if(d.kind==='style'){ var sc=d.style&&d.style.scene||'article'; S.styles[sc]=Object.assign(S.styles[sc]||{},d.style||{}); save(); applySceneStyle(S.scene); render(); }
+    if(d.kind==='style'){ var sc=d.style&&d.style.scene||'article'; S.styles[sc]=Object.assign(S.styles[sc]||{},d.style||{}); save(); _ackPending=true; applySceneStyle(S.scene); render(); }
   };
 
   // ── 启动 ──
