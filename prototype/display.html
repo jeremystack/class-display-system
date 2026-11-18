@@ -272,26 +272,12 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   }
   $('go').addEventListener('click', confirmCode);
 
-  // 输码页：显示该码剩余有效期 / 过期 / 已使用
-  function renderCodeMeta(){
-    var meta = $('codeMeta'), go = $('go'), o = null;
-    try{ o = JSON.parse(LS.getItem('cds.codeObj')||'null'); }catch(e){}
-    if(!o){ meta.textContent=''; meta.className='code-meta'; go.disabled=false; return; }
-    var left = o.exp - Date.now();
-    if(o.used){ meta.textContent='该控制码已被使用'; meta.className='code-meta warn'; go.disabled=false; }
-    else if(left <= 0){
-      meta.textContent='该控制码已过期，请在控制台刷新后重新输入';
-      meta.className='code-meta bad';
-      entryErr('控制码已过期，请在控制台刷新后重新输入');
-      go.disabled=false;
-    } else {
-      var t=Math.max(0,Math.floor(left/1000));
-      meta.textContent='该控制码剩余 '+String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');
-      meta.className='code-meta'+(left<120000?' warn':'');
-      go.disabled=false;
-    }
-  }
-  setInterval(renderCodeMeta, 1000);
+  // 输码页：只有中性提示（真机拿不到"剩余多久"，见变更单异议 4）
+  // 结论（过期/已使用）一律在"确认"之后按服务端 reason 给文案，不在提交前预判
+  (function(){
+    var meta = $('codeMeta');
+    if(meta) meta.textContent = '控制码 15 分钟内有效 · 过期请在控制台点 ⟳ 刷新';
+  })();
 
   // 长按 3 秒重置
   var pressT=null, raf=null, t0=0;
@@ -384,7 +370,6 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   var mScene = /[?&]scene=(music|article|cast|idle)/.exec(location.search);
   if(mScene && LS.getItem('cds.bound')){ S.scene = mScene[1]; if(S.scene==='music' && /[?&]playing=1/.test(location.search)) S.music.playing=true; render(); }
 
-  renderCodeMeta();
   if(DEBUG){ $('dbg').className='show'; $('dbg').textContent='debug · scene='+S.scene; }
 })();
 </script>
