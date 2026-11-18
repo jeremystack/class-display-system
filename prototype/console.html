@@ -37,6 +37,9 @@ h1,h2,h3{margin:0;font-weight:600}
 .code .meta.bad{color:#ff9d9d;border-color:#5a2222}
 .code b{font:600 20px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:3px}
 .code button{min-height:28px;padding:2px 8px}
+.cfsize{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:4px 8px}
+.cfsize button{min-height:22px;padding:0 7px;font-size:12px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text);cursor:pointer}
+.cfsize .ro{font-size:11px;opacity:.7}
 .conn{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;white-space:nowrap}
 .conn .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
 
@@ -137,6 +140,13 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       <button id="unbindAll" class="ghost" title="全部解绑：所有终端回到输码页" style="font-size:12px">全部解绑</button>
     </div>
     <a class="ghost" href="screen.html" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);font-size:12px" title="显控一体：这台电脑 + HDMI 复制到投影">🖥 单屏模式</a>
+    <div class="cfsize" title="只改这台控制机的文字大小，不影响教室屏幕（V2.1.5）">
+      <span>控制页</span>
+      <button type="button" id="cfMinus">−</button>
+      <span id="cfVal">100%</span>
+      <button type="button" id="cfPlus">＋</button>
+      <span class="ro">仅本机</span>
+    </div>
     <div class="conn"><span class="dot"></span>已连接</div>
   </header>
 
@@ -185,12 +195,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
         <input type="range" id="sFontSize" min="24" max="120" step="4" value="72">
         <span class="hintline" id="sFontEst">≈7 行 / 屏</span>
       </label>
-      <div class="field">控制页字号（仅本机）<span id="cfVal">100%</span>
-        <span style="display:inline-flex;gap:6px">
-          <button type="button" id="cfMinus" title="缩小控制页文字（不影响显示端）">−</button>
-          <button type="button" id="cfPlus" title="放大控制页文字（不影响显示端）">＋</button>
-        </span>
-      </div>
+
       <label class="field">行高 <span id="sLhVal">1.75</span>
         <input type="range" id="sLh" min="1.2" max="2.2" step="0.05" value="1.75">
       </label>
