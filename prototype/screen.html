@@ -214,6 +214,23 @@ body{font-family:var(--ui)}
     return Math.max(6, Math.min(cap, c));
   }
 
+  // V2.2.16：改 charsPerLine 后**必须重切行**——`data-lines` 是渲染期按当时 cpl 算的。
+  // 旧码只改 STYLE_CPL 不重建 DOM ⇒ ② 档永远判不出变化（空转）；若靠 ③ 成一屏，
+  // 回报的每行字数与画出来的行数不一致（与 display.html 同一处订正）。
+  function rebuildArticle(){
+    if(S.scene!=='article') return;
+    var surf=document.querySelector('#surface'); if(!surf) return;
+    var flow=surf.querySelector('.article .flow'); if(!flow) return;
+    var a=S.article.items[S.article.idx]||{t:'诗篇 23 章',ch:23};
+    var vs=VERSES[a.ch]||VERSES[23]; A.verses=vs;
+    var cpl=cplNow(surf);
+    flow.innerHTML=vs.map(function(v){
+      var ls=sliceLines(v[1], cpl);
+      return '<p data-lines="'+ls.length+'">'+ls.map(function(l,i){
+        return '<span class="ln">'+(i===0?'<span class="sn">'+v[0]+'</span>':'')+esc(l)+'</span>';}).join('')+'</p>';
+    }).join('');
+  }
+
   // V2.1.10：算术分页（主路径）。行数＝切行数组长度
   function layoutArticle(silent){
     var body=artBody(); if(!body) return;
@@ -380,7 +397,7 @@ body{font-family:var(--ui)}
     }
     if(!done){
       var host=document.querySelector('#surface'), cap=cplMax(host?host.clientWidth:1728);
-      if(cplNow(host)<cap){ STYLE_CPL=cap; if(fits()){ changed.push('每行 '+CP0+'→'+cap+' 字'); done=true; } }
+      if(cplNow(host)<cap){ STYLE_CPL=cap; rebuildArticle(); if(fits()){ changed.push('每行 '+CP0+'→'+cap+' 字'); done=true; } }
     }
     var px=F0;
     while(!done && px>24){
@@ -390,6 +407,7 @@ body{font-family:var(--ui)}
     }
     if(!done){
       root.setProperty('--lh', LH0); root.setProperty('--fs', F0+'px'); STYLE_CPL=CP0;
+      rebuildArticle();                                   // V2.2.16：复原 cpl 后必须重切，别留 ② 档的行数
       layoutArticle(true); postPageMap();
       sys('整章一屏：已到最小仍 '+A.pageCount+' 屏，样式已还原', 3200); return;
     }
