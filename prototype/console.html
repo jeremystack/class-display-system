@@ -158,7 +158,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     <div id="np" style="display:none;align-items:center;gap:8px;padding:4px 10px;border:1px solid #3a4356;border-radius:8px;font-size:12px;color:#cfd8e6"><span style="color:#8ab4f8">♪</span><span id="npTxt">—</span><button id="npResume" style="font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid #3a4356;background:transparent;color:#cfd8e6;cursor:pointer">继续</button><button id="npStop" style="font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid #3a4356;background:transparent;color:#cfd8e6;cursor:pointer">停止</button></div>
     <div class="code">
       <span class="label">控制码</span><b id="codeText">482 913</b><span class="meta" id="codeMeta">剩 15:00</span>
-      <button id="refreshCode" title="刷新控制码（已连终端不掉线）">⟳</button>
+      <button id="refreshCode" title="刷新控制码＝重置接管：旧码作废，已绑屏幕全部回输码态">⟳</button>
       <button id="unbindAll" class="ghost" title="全部解绑：所有终端回到输码页" style="font-size:12px">全部解绑</button>
     </div>
     <a class="ghost" href="screen.html" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);font-size:12px" title="显控一体：这台电脑 + HDMI 复制到投影">🖥 单屏模式</a>
@@ -368,15 +368,27 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     S.codeObj = { code:c, exp: Date.now()+CODE_TTL, used: !!used };
     saveCode(); renderCode();
   }
+  // V2.1.23：自动续码＝只换码、不撤销任何会话。接第二台屏、码到期都走这里；⟳ 才是踢人（重置接管）。
+  function newCode(){ return String(Math.floor(100000+Math.random()*900000)); }
+  function reissueCode(why){
+    var c = newCode();
+    setCode(c);
+    send({kind:'codeChanged', code:c, reason:'code_issued'});
+    return c;
+  }
   function renderCode(){
     var o = S.codeObj, meta = $('codeMeta'), left = o.exp - Date.now();
     $('codeText').textContent = o.code.slice(0,3)+' '+o.code.slice(3);
     if(!meta) return;
-    if(o.used){ meta.textContent = '已使用 · 点⟳为下一台出码'; meta.className='meta used'; }
-    else if(left <= 0){ meta.textContent = '已过期 · 点⟳刷新'; meta.className='meta bad'; }
+    if(o.used){ meta.textContent = '已使用 · 已自动出下一张码'; meta.className='meta used'; }
+    else if(left <= 0){ meta.textContent = '已过期 · 已自动换新码'; meta.className='meta bad'; }
     else { meta.textContent = '剩 '+shortClock(left); meta.className = 'meta'+(left < 120000 ? ' warn' : ''); }
   }
-  setInterval(renderCode, 1000);
+  // V2.1.23：码到期自动换新码——过期是票据时效，不是接管变更，不得因此踢掉已连屏
+  setInterval(function(){
+    if(S.codeObj && !S.codeObj.used && S.codeObj.exp - Date.now() <= 0){ reissueCode('code_expired'); toast('控制码已过期，已自动换新码（已连屏幕不受影响）'); }
+    renderCode();
+  }, 1000);
 
   // ── 终端在线（心跳） ──
   function beat(){
@@ -729,11 +741,25 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     toast('已停止播放（画面不动）'); render();
   });
 
+  // V2.1.23（CO-2026-11-18-04）：⟳ ＝ 重置接管。旧码作废 + 已绑会话全部失效 → 显示端回输码态。
+  // 注意：接第二台屏幕**不**走这里（走 ackBound 的自动续码），否则会把刚接好的第一台踢掉。
+  var rotArmed = false, rotTimer = null;
   $('refreshCode').addEventListener('click', function(){
-    var c = String(Math.floor(100000+Math.random()*900000));
+    var btn = this, n = S.termOnline;            // 原型单窗只有 0/1；真机 N 取 presence 聚合
+    if(n > 0 && !rotArmed){
+      rotArmed = true; btn.textContent = '再点确认';
+      clearTimeout(rotTimer);
+      rotTimer = setTimeout(function(){ rotArmed = false; btn.textContent = '\u27F3'; }, 3000);
+      toast('再点一次确认：会让 ' + n + ' 台屏幕掉线并回输码态'
+        + ((S.scene==='article'||S.scene==='cast') ? '（正在投屏的会停回待机）' : ''), true);
+      return;
+    }
+    clearTimeout(rotTimer); rotArmed = false; btn.textContent = '\u27F3';
+    var c = newCode();
     setCode(c);
-    send({kind:'codeChanged', code:c});
-    toast('已生成新控制码（15 分钟内有效，绑定一次即作废；已连终端不掉线）');
+    send({kind:'revoke', reason:'code_rotated', code:c});
+    toast(n ? ('已换码并重置接管：' + n + ' 台屏幕回输码态，请用新码重新输入')
+            : '已生成新控制码（15 分钟内有效，绑定一次即作废；尚无屏幕在线）');
   });
   var unbindArmed = false, unbindTimer = null;
   $('unbindAll').addEventListener('click', function(){
@@ -811,7 +837,10 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     if(d.kind==='ack') toast(d.text||'显示端已确认');
     if(d.kind==='ackBound'){
       S.codeObj.used = true; saveCode(); renderCode();
-      toast('教室屏幕已绑定：本码已作废，接第二台请点 ⟳ 生成新码');
+      // V2.1.23：绑定成功即自动续一张码——只换码、不撤销已连会话。
+      // 否则「接第二台」只能按 ⟳，而 ⟳ 现在是重置接管，会把刚接好的第一台踢掉。
+      reissueCode('code_bound');
+      toast('教室屏幕已绑定；已自动出下一张码（接第二台直接输这张，不用点 ⟳）');
       beat();
     }
     // V2.1：显示端无音频，audioBlocked 已删除
