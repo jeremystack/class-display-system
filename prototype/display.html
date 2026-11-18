@@ -387,6 +387,8 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   if(BC) BC.onmessage=function(ev){
     var d=ev.data||{};
     if(d.kind==='style'){ applyStyle(d.style); sys('样式已更新（不刷新页面）', false, 2200);
+      // V2.1.5：字号是 px 且有量程变化，分页是「实测高度」——样式一变必须重排，否则旧页装不下新字号
+      if(S.scene==='article') requestAnimationFrame(function(){ measurePages(); render(); });
       if(BC) BC.postMessage({kind:'ack', text:d.style ? '样式已应用' : ''}); return; }
     if(d.kind==='revoke'){ LS.removeItem('cds.bound'); LS.removeItem('cds.credential'); LS.removeItem('cds.displayBeat'); $('banner').textContent='控制码已失效，请重新输入'; $('banner').hidden=false;
       $('content').hidden=true; $('entry').hidden=false; inputs.forEach(function(i){i.value='';}); return; }
