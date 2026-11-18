@@ -120,7 +120,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   var LS = window.localStorage, BC = ('BroadcastChannel' in window) ? new BroadcastChannel('cds-proto') : null;
   var $ = function(id){ return document.getElementById(id); };
   var DEBUG = /[?&]debug=1/.test(location.search);
-  var sysTimer = null;                    // V2.1：显示端无音频，不再有 AudioContext / unlocked
+  var sysTimer = null;                    // V2.1：显示端无音频（无音频上下文、无解锁状态）
 
   function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
   function fmt(ms){ var s=Math.max(0,Math.floor(ms/1000)); return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
@@ -288,7 +288,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     });
   });
 
-  // 同一手势内：解锁音频 → 探测 → 绑定 → 进内容态
+  // V2.1：输码 = 仅绑定（音频锚点在控制页，显示端不碰音频）
   function confirmCode(){
     var code=codeValue();
     if(code.length!==6){ entryErr('请输入 6 位控制码'); return; }
