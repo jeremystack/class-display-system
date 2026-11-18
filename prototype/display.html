@@ -162,7 +162,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
       <button class="go" id="go">确认</button>
       <div class="err" id="err"></div>
     </div>
-    <span class="reset-hint" id="resetHint">长按 3 秒重置</span>
+    <span class="reset-hint" id="resetHint">长按 3 秒清除本地码</span>
     <div class="ring" id="ring"><svg width="40" height="40"><circle cx="20" cy="20" r="16"/></svg></div>
   </section>
 
@@ -836,7 +836,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     if(meta) meta.textContent = '控制码长期有效 · 需要更换时由控制端更新，旧码随即失效';
   })();
 
-  // 长按 3 秒重置
+  // 长按 3 秒清除本地码（输码态专用；内容态才是解绑）
   var pressT=null, raf=null, t0=0;
   function startPress(e){
     if(e.target.closest('input')||e.target.closest('button')) return;
