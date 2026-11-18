@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CDS 显示端原型 V2.0（输码态 / 内容态）</title>
+<style>
+:root{
+  --cds-bg:#000; --cds-fg:#e8ecf2; --cds-fg-muted:#a9b3c2; --cds-accent:#8ab4f8;
+  --cds-font-ui:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --cds-font-body:"Songti SC","Noto Serif SC",serif;
+  --cds-font-scale:1.15; --cds-line-height:1.75; --cds-align:left;
+}
+*{box-sizing:border-box}
+html{font-size:18px}
+html,body{margin:0;height:100%;overflow:hidden}
+body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)}
+.stage{position:fixed;inset:0;display:flex;flex-direction:column}
+.view{position:absolute;inset:0;transition:opacity .18s ease}
+.view[hidden],#entry[hidden]{display:none}
+
+/* ── 输码态 ── */
+#entry{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:6vh 6vw}
+.entry-inner{width:min(560px,86vw)}
+.entry-inner h1{font-size:1.6rem;margin:0 0 .4rem;font-weight:600;letter-spacing:.05em}
+.entry-inner p{color:var(--cds-fg-muted);margin:0 0 2.2rem;font-size:.9rem;line-height:1.7}
+.digits{display:flex;gap:12px;justify-content:center;margin-bottom:1.4rem}
+.digits input{width:min(72px,13vw);height:min(96px,18vw);text-align:center;font:600 min(2.6rem,7vw)/1 ui-monospace,monospace;
+  color:var(--cds-fg);background:rgba(255,255,255,.05);border:2px solid rgba(255,255,255,.18);border-radius:12px;outline:none}
+.digits input:focus{border-color:var(--cds-accent);background:rgba(255,255,255,.09)}
+.entry-inner button.go{font:600 1.05rem/1 var(--cds-font-ui);padding:1rem 3.2rem;border-radius:999px;border:none;
+  background:var(--cds-accent);color:#06101f;cursor:pointer;min-height:52px}
+.entry-inner button.go:active{transform:translateY(1px)}
+.err{color:#ff9d9d;font-size:.85rem;min-height:1.4rem;margin-top:1rem}
+.code-meta{font-size:.78rem;color:var(--cds-fg-muted);letter-spacing:.04em;margin:-1.2rem 0 1.4rem;min-height:1.2rem}
+.code-meta.warn{color:#ffcf8a}
+.code-meta.bad{color:#ff9d9d}
+.entry-banner{position:absolute;top:0;left:0;right:0;padding:.85rem 1rem;background:#3a1414;color:#ffd7d7;font-size:.85rem;text-align:center}
+.entry-banner[hidden]{display:none}
+.reset-hint{position:absolute;right:18px;bottom:14px;font-size:12px;color:rgba(255,255,255,.28);user-select:none;cursor:default}
+.ring{position:absolute;right:12px;bottom:8px;width:40px;height:40px;opacity:0;transition:opacity .1s}
+.ring svg{transform:rotate(-90deg)}
+.ring circle{fill:none;stroke:rgba(255,255,255,.45);stroke-width:3;stroke-dasharray:100.5;stroke-dashoffset:100.5}
+
+/* ── 内容态 ── */
+#content{padding:5vh 5vw}
+.music{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.music .cover{width:min(30vh,240px);height:min(30vh,240px);border-radius:18px;
+  background:linear-gradient(135deg,#2b3a5c,#4a2f57 60%,#1b2437);margin-bottom:3vh;opacity:.9}
+.music .t{font-size:1.5rem;font-weight:600;letter-spacing:.04em}
+.music .sub{color:var(--cds-fg-muted);font-size:.8rem;margin-top:.5rem}
+.lyrics{margin-top:4vh;height:21vh;overflow:hidden;position:relative;width:100%}
+.lyric{font-size:1.05rem;line-height:2.1;color:rgba(255,255,255,.32);transition:color .25s,transform .25s}
+.lyric.cur{color:var(--cds-accent);transform:scale(1.06)}
+.progress{position:absolute;left:5vw;right:5vw;bottom:4vh;height:4px;background:rgba(255,255,255,.14);border-radius:99px}
+.progress i{display:block;height:100%;background:var(--cds-accent);border-radius:99px;transition:width .25s linear}
+
+.article{height:100%;display:flex;flex-direction:column}
+.article .head{color:var(--cds-fg-muted);font-size:.8rem;letter-spacing:.06em;margin-bottom:2.5vh}
+.article .head b{color:var(--cds-fg);font-size:1rem;margin-right:.8rem}
+.body{flex:1;overflow:hidden;font-family:var(--cds-font-body);
+  font-size:calc(1rem * var(--cds-font-scale));line-height:var(--cds-line-height);text-align:var(--cds-align)}
+.body p{margin:0 0 1.1em;transition:font-size .2s ease,color .2s ease}
+.body .sn{color:var(--cds-fg-muted);font-size:.6em;vertical-align:.25em;margin-right:.5em;font-family:var(--cds-font-ui)}
+
+.cast{height:100%;display:flex;align-items:center;justify-content:center}
+.cast .paper{max-width:74vw;font-family:var(--cds-font-body);font-size:calc(1.35rem * var(--cds-font-scale));
+  line-height:var(--cds-line-height);text-align:var(--cds-align);white-space:pre-wrap}
+
+.idle{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--cds-fg-muted)}
+.idle .room{font-size:1.35rem;color:var(--cds-fg);letter-spacing:.12em}
+.idle .clock{font:300 4.2rem/1.2 ui-monospace,monospace;margin:2vh 0 1vh;color:rgba(255,255,255,.85)}
+.idle .wait{font-size:.8rem;letter-spacing:.14em;color:rgba(255,255,255,.35)}
+
+/* ── 系统层 ── */
+#sys{position:fixed;left:0;right:0;bottom:0;padding:.7rem 1rem;background:rgba(20,22,28,.92);
+  border-top:1px solid rgba(255,255,255,.12);font-size:.8rem;color:#ffd9a0;display:none;z-index:50}
+#sys.show{display:block}
+#sys.bad{background:rgba(58,20,20,.94);color:#ffd7d7}
+#dbg{position:fixed;right:10px;top:10px;font:11px/1.5 ui-monospace,monospace;color:rgba(255,255,255,.4);text-align:right;display:none}
+#dbg.show{display:block}
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <!-- 输码态 -->
+  <section class="view" id="entry">
+    <div class="entry-banner" id="banner" hidden>控制码已失效，请重新输入</div>
+    <div class="entry-inner">
+      <h1>教室显示</h1>
+      <p>请输入控制台上的控制码<br>（首次使用一次，之后开机自动连上）</p>
+      <div class="code-meta" id="codeMeta"></div>
+      <div class="digits" id="digits">
+        <input inputmode="numeric" maxlength="1" autocomplete="off">
+        <input inputmode="numeric" maxlength="1" autocomplete="off">
+        <input inputmode="numeric" maxlength="1" autocomplete="off">
+        <input inputmode="numeric" maxlength="1" autocomplete="off">
+        <input inputmode="numeric" maxlength="1" autocomplete="off">
+        <input inputmode="numeric" maxlength="1" autocomplete="off">
+      </div>
+      <button class="go" id="go">确认</button>
+      <div class="err" id="err"></div>
+    </div>
+    <span class="reset-hint" id="resetHint">长按 3 秒重置</span>
+    <div class="ring" id="ring"><svg width="40" height="40"><circle cx="20" cy="20" r="16"/></svg></div>
+  </section>
+
+  <!-- 内容态（零控件） -->
+  <section class="view" id="content" hidden></section>
+
+  <div id="sys"></div>
+  <div id="dbg"></div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  var LS = window.localStorage, BC = ('BroadcastChannel' in window) ? new BroadcastChannel('cds-proto') : null;
+  var $ = function(id){ return document.getElementById(id); };
+  var DEBUG = /[?&]debug=1/.test(location.search);
+  var ACTX = null, unlocked = false, sysTimer = null;
+
+  function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function fmt(ms){ var s=Math.max(0,Math.floor(ms/1000)); return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
+
+  // ── 系统层 ──
+  function sys(text, bad, ms){
+    var el=$('sys'); el.textContent=text; el.className='show'+(bad?' bad':'');
+    clearTimeout(sysTimer);
+    if(ms) sysTimer=setTimeout(function(){ el.className=''; }, ms);
+  }
+  function sysOff(){ $('sys').className=''; }
+
+  // ── 样式（本地缓存优先，避免闪字） ──
+  function applyStyle(st){
+    if(!st) return;
+    var r=document.documentElement.style;
+    if(st.fontFamily && st.fontFamily.body){
+      var map={song:'"Songti SC","Noto Serif SC",serif',hei:'"PingFang SC","Microsoft YaHei",sans-serif',kai:'"Kaiti SC",KaiTi,serif','system-ui':'system-ui,sans-serif'};
+      r.setProperty('--cds-font-body', map[st.fontFamily.body]||st.fontStack||'system-ui,sans-serif');
+    }
+    if(st.fontScale) r.setProperty('--cds-font-scale', st.fontScale);
+    if(st.lineHeight) r.setProperty('--cds-line-height', st.lineHeight);
+    if(st.fg){ r.setProperty('--cds-fg', st.fg); }
+    if(st.bg){ r.setProperty('--cds-bg', st.bg); }
+    if(st.align) r.setProperty('--cds-align', st.align);
+  }
+  try{ applyStyle(JSON.parse(LS.getItem('cds.style')||'null')); }catch(e){}
+
+  // ── 心跳（供控制台算"在线终端数"） ──
+  function beat(){ if(LS.getItem('cds.bound')) LS.setItem('cds.displayBeat', String(Date.now())); }
+  setInterval(beat, 1000);
+
+  // ── 数据 ──
+  var S = { scene:'idle', music:{ idx:0, playing:false, pos:0, items:[
+      { t:'我心灵得安宁', m:'4:05', dur:245000 },{ t:'奇异恩典', m:'3:42', dur:222000 },{ t:'靠近主', m:'5:10', dur:310000 }]},
+    article:{ idx:0, page:0, items:[{t:'诗篇 23 章',v:'诗篇',ch:23},{t:'约伯记 3 章',v:'约伯记',ch:3}]},
+    cast:{ active:false, text:'' }
+  };
+  try{
+    var saved=JSON.parse(LS.getItem('cds.consoleState')||'null');
+    if(saved){ S.music.items=saved.music; S.article.items=saved.article; }
+  }catch(e){}
+
+  var LYRICS = ['宇宙广阔无垠','我心灵得安宁','如海洋般深沉','主恩典够我用','我安然躺卧'];
+  var VERSES = {
+    23:[['1','耶和华是我的牧者，我必不致缺乏。'],['2','他使我躺卧在青草地上，领我在可安歇的水边。'],['3','他使我的灵魂苏醒，为自己的名引导我走义路。'],['4','我虽然行过死荫的幽谷，也不怕遭害，因为你与我同在。'],['5','在我敌人面前，你为我摆设筵席；你用油膏了我的头，使我的福杯满溢。'],['6','我一生一世必有恩惠慈爱随着我，我且要住在耶和华的殿中，直到永远。']],
+    3:[['1','此后，约伯开口咒诅自己的生日。'],['2','说：愿我生的那日和说怀了男胎的那夜都灭没。'],['3','愿那日变为黑暗；愿神不从上面寻找它。']]
+  };
+
+  // ── 内容渲染（无任何控件） ──
+  function render(){
+    if(!LS.getItem('cds.bound')) return;
+    var c=$('content'), html='';
+    if(S.scene==='music'){
+      var it=S.music.items[S.music.idx]||{t:'',m:'--:--',dur:245000};
+      var cur=Math.min(LYRICS.length-1, Math.floor((S.music.pos/it.dur)*LYRICS.length));
+      html='<div class="music">'+
+        '<div class="cover"></div>'+
+        '<div class="t">'+esc(it.t)+'</div>'+
+        '<div class="sub">'+(S.music.playing?'正在播放':'已暂停')+' · 第 '+(S.music.idx+1)+' 首</div>'+
+        '<div class="lyrics" id="lrc">'+LYRICS.map(function(l,i){return '<div class="lyric'+(i===cur?' cur':'')+'">'+esc(l)+'</div>';}).join('')+'</div>'+
+        '</div>'+
+        '<div class="progress"><i id="pbar" style="width:'+Math.min(100,(S.music.pos/it.dur)*100).toFixed(1)+'%"></i></div>';
+    } else if(S.scene==='article'){
+      var a=S.article.items[S.article.idx]||{t:'诗篇 23 章',v:'诗篇',ch:23};
+      var vs=VERSES[a.ch]||VERSES[23];
+      var start=S.article.page*3, slice=vs.slice(start,start+3);
+      html='<div class="article"><div class="head"><b>'+esc(a.t)+'</b>第 '+(S.article.page+1)+' 屏</div>'+
+        '<div class="body">'+slice.map(function(v){return '<p><span class="sn">'+v[0]+'</span>'+esc(v[1])+'</p>';}).join('')+'</div></div>';
+    } else if(S.scene==='cast'){
+      html='<div class="cast"><div class="paper">'+esc(S.cast.text||'（板书内容）')+'</div></div>';
+    } else {
+      var now=new Date();
+      html='<div class="idle"><div class="room">主堂 · 显示终端</div><div class="clock">'+
+        String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+'</div>'+
+        '<div class="wait">等待控制台</div></div>';
+    }
+    c.innerHTML=html;
+    $('content').hidden=false; $('entry').hidden=true;
+    if(DEBUG) $('dbg').className='show';
+  }
+
+  // ── 进度推进 ──
+  setInterval(function(){
+    if(S.scene!=='music'||!S.music.playing) return;
+    S.music.pos+=250;
+    var it=S.music.items[S.music.idx]||{dur:245000};
+    if(S.music.pos>=it.dur){ S.music.pos=0; }
+    var bar=$('pbar'); if(bar) bar.style.width=Math.min(100,(S.music.pos/it.dur)*100).toFixed(1)+'%';
+    var cur=Math.min(LYRICS.length-1, Math.floor((S.music.pos/it.dur)*LYRICS.length));
+    var nodes=document.querySelectorAll('.lyric');
+    nodes.forEach(function(n,i){ n.className='lyric'+(i===cur?' cur':''); });
+    if(DEBUG) $('dbg').textContent='scene='+S.scene+' pos='+fmt(S.music.pos)+' styleV='+((JSON.parse(LS.getItem('cds.style')||'{}').styleVersion)||'-');
+  },250);
+
+  // ── 输码 ──
+  var inputs=[].slice.call(document.querySelectorAll('#digits input'));
+  function codeValue(){ return inputs.map(function(i){return i.value;}).join(''); }
+  function entryErr(msg){ $('err').textContent=msg; }
+  inputs.forEach(function(inp,i){
+    inp.addEventListener('input', function(){
+      inp.value=inp.value.replace(/\D/g,'').slice(0,1);
+      if(inp.value && i<inputs.length-1) inputs[i+1].focus();
+    });
+    inp.addEventListener('keydown', function(e){
+      if(e.key==='Backspace' && !inp.value && i>0){ inputs[i-1].focus(); inputs[i-1].value=''; e.preventDefault(); }
+      if(e.key==='Enter') confirmCode();
+    });
+    inp.addEventListener('paste', function(e){
+      var t=(e.clipboardData||window.clipboardData).getData('text').replace(/\D/g,'').slice(0,6);
+      if(t){ e.preventDefault(); t.split('').forEach(function(ch,k){ if(inputs[k]) inputs[k].value=ch; }); (inputs[Math.min(t.length,5)]||inputs[5]).focus(); }
+    });
+  });
+
+  // 同一手势内：解锁音频 → 探测 → 绑定 → 进内容态
+  function confirmCode(){
+    var code=codeValue();
+    if(code.length!==6){ entryErr('请输入 6 位控制码'); return; }
+    try{
+      ACTX = ACTX || new (window.AudioContext||window.webkitAudioContext)();
+      if(ACTX.state==='suspended') ACTX.resume();
+      var o=ACTX.createOscillator(), g=ACTX.createGain();
+      g.gain.value=0.0001; o.frequency.value=440; o.connect(g); g.connect(ACTX.destination);
+      o.start(); o.stop(ACTX.currentTime+0.06);
+      unlocked = true;
+    }catch(e){ unlocked=false; }
+    if(DEBUG) $('dbg').textContent='audio unlocked='+unlocked;
+
+    var o = null;
+    try{ o = JSON.parse(LS.getItem('cds.codeObj')||'null'); }catch(e){}
+    if(o){
+      if(o.used){ entryErr('该码已被使用，请在控制台点 ⟳ 获取新码'); return; }
+      if(o.exp - Date.now() <= 0){ entryErr('控制码已过期，请在控制台刷新后重新输入'); return; }
+      if(code !== o.code){ entryErr('控制码无效，请与控制台核对'); return; }
+      o.used = true; LS.setItem('cds.codeObj', JSON.stringify(o));   // 单次消费
+    } else {
+      var expect = LS.getItem('cds.consoleCode');
+      if(expect && code !== expect){ entryErr('控制码无效，请与控制台核对'); return; }
+    }
+    LS.setItem('cds.bound', '1');
+    LS.setItem('cds.credential', 'cred-'+Math.random().toString(36).slice(2,10));
+    LS.setItem('cds.boundAt', String(Date.now()));
+    beat();
+    entryErr('');
+    $('banner').hidden=true;
+    if(BC){ BC.postMessage({kind:'ackBound', text:'教室屏幕已绑定'}); }
+    S.scene='idle'; render();
+    sysOff();
+    if(!unlocked) sys('点击屏幕任意位置启用音频', true);
+  }
+  $('go').addEventListener('click', confirmCode);
+
+  // 输码页：显示该码剩余有效期 / 过期 / 已使用
+  function renderCodeMeta(){
+    var meta = $('codeMeta'), go = $('go'), o = null;
+    try{ o = JSON.parse(LS.getItem('cds.codeObj')||'null'); }catch(e){}
+    if(!o){ meta.textContent=''; meta.className='code-meta'; go.disabled=false; return; }
+    var left = o.exp - Date.now();
+    if(o.used){ meta.textContent='该控制码已被使用'; meta.className='code-meta warn'; go.disabled=false; }
+    else if(left <= 0){
+      meta.textContent='该控制码已过期，请在控制台刷新后重新输入';
+      meta.className='code-meta bad';
+      entryErr('控制码已过期，请在控制台刷新后重新输入');
+      go.disabled=false;
+    } else {
+      var t=Math.max(0,Math.floor(left/1000));
+      meta.textContent='该控制码剩余 '+String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');
+      meta.className='code-meta'+(left<120000?' warn':'');
+      go.disabled=false;
+    }
+  }
+  setInterval(renderCodeMeta, 1000);
+
+  // 长按 3 秒重置
+  var pressT=null, raf=null, t0=0;
+  function startPress(e){
+    if(e.target.closest('input')||e.target.closest('button')) return;
+    t0=performance.now(); $('ring').style.opacity='1';
+    (function tick(){
+      var p=Math.min(1,(performance.now()-t0)/3000);
+      var c=$('ring').querySelector('circle');
+      c.style.strokeDashoffset=String(100.5*(1-p));
+      if(p>=1){ clearCode(); return; }
+      raf=requestAnimationFrame(tick);
+    })();
+    pressT=setTimeout(clearCode, 3000);
+  }
+  function endPress(){ clearTimeout(pressT); cancelAnimationFrame(raf); $('ring').style.opacity='0'; $('ring').querySelector('circle').style.strokeDashoffset='100.5'; }
+  $('entry').addEventListener('pointerdown', startPress);
+  $('entry').addEventListener('pointerup', endPress);
+  $('entry').addEventListener('pointercancel', endPress);
+  $('entry').addEventListener('pointerleave', endPress);
+
+  function clearCode(){
+    endPress();
+    LS.removeItem('cds.bound'); LS.removeItem('cds.credential'); LS.removeItem('cds.boundAt'); LS.removeItem('cds.displayBeat');
+    $('content').hidden=true; $('entry').hidden=false;
+    inputs.forEach(function(i){ i.value=''; });
+    entryErr('已清除缓存的控制码');
+    setTimeout(function(){ if(!codeValue()) entryErr(''); }, 3500);
+    inputs[0].focus();
+  }
+
+  if(/[?&]reset=1/.test(location.search)) clearCode();
+
+  // 任意触摸补解锁（autoplay 被拦时）
+  document.addEventListener('pointerdown', function(){
+    if(ACTX && ACTX.state==='suspended'){ ACTX.resume(); }
+    if(!unlocked && ACTX){ unlocked=true; sysOff(); }
+  });
+
+  // ── 控制台下行 ──
+  if(BC) BC.onmessage=function(ev){
+    var d=ev.data||{};
+    if(d.kind==='style'){ applyStyle(d.style); sys('样式已更新（不刷新页面）', false, 2200);
+      if(BC) BC.postMessage({kind:'ack', text:d.style ? '样式已应用' : ''}); return; }
+    if(d.kind==='revoke'){ LS.removeItem('cds.bound'); LS.removeItem('cds.credential'); LS.removeItem('cds.displayBeat'); $('banner').textContent='控制码已失效，请重新输入'; $('banner').hidden=false;
+      $('content').hidden=true; $('entry').hidden=false; inputs.forEach(function(i){i.value='';}); return; }
+    if(d.kind==='codeChanged'){ sys('控制码已刷新（已连终端不受影响）', false, 2500); return; }
+    if(!LS.getItem('cds.bound')) return;
+    if(d.kind==='scene'){
+      S.scene=d.scene;
+      if(d.scene!=='music') S.music.playing=false;
+      render(); return;
+    }
+    if(d.kind==='play'){
+      S.music.idx=d.idx||0; S.music.pos=d.pos||0; S.music.playing=true; S.scene='music'; render();
+      if(!unlocked){ sys('音频被浏览器拦截：请点一下屏幕', true); if(BC) BC.postMessage({kind:'audioBlocked'}); }
+      return;
+    }
+    if(d.kind==='music'){
+      if(typeof d.idx==='number') S.music.idx=d.idx;
+      if(typeof d.pos==='number') S.music.pos=d.pos;
+      if(typeof d.playing==='boolean') S.music.playing=d.playing;
+      if(S.scene==='music'){
+        var bar=$('pbar'), it=S.music.items[S.music.idx]||{dur:245000};
+        if(bar) bar.style.width=Math.min(100,(S.music.pos/it.dur)*100).toFixed(1)+'%';
+        if(d.action==='toggle'||d.action==='prev'||d.action==='next'){ var sub=document.querySelector('.music .sub'); if(sub) sub.textContent=(S.music.playing?'正在播放':'已暂停')+' · 第 '+(S.music.idx+1)+' 首'; }
+      } else if(d.playing){ S.scene='music'; render(); }
+      if(!unlocked && S.music.playing){ sys('音频被浏览器拦截：请点一下屏幕', true); if(BC) BC.postMessage({kind:'audioBlocked'}); }
+      return;
+    }
+    if(d.kind==='article'){
+      S.article.idx=d.idx||0; S.article.page=d.page||0; S.scene='article'; render(); return;
+    }
+    if(d.kind==='cast'){
+      S.cast.text=d.text||''; S.cast.active=!!d.active;
+      S.scene = d.scene || (d.active?'cast':'idle'); render(); return;
+    }
+    if(d.kind==='volume'){ /* 原型不发声 */ return; }
+  };
+
+  // ── 启动 ──
+  if(LS.getItem('cds.bound')){
+    render(); beat();
+  } else {
+    $('entry').hidden=false;
+    setTimeout(function(){ inputs[0].focus(); }, 200);
+  }
+
+  // 演示深链：?scene=music|article|cast|idle（仅原型，便于无需控制台单独看某一态）
+  var mScene = /[?&]scene=(music|article|cast|idle)/.exec(location.search);
+  if(mScene && LS.getItem('cds.bound')){ S.scene = mScene[1]; if(S.scene==='music' && /[?&]playing=1/.test(location.search)) S.music.playing=true; render(); }
+
+  renderCodeMeta();
+  if(DEBUG){ $('dbg').className='show'; $('dbg').textContent='debug · scene='+S.scene; }
+})();
+</script>
+</body>
+</html>

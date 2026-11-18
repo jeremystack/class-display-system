@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CDS 控制台原型 V2.0（一屏）</title>
+<style>
+:root{
+  --surface:#0f1115; --raised:#171a21; --border:#262b36; --text:#e6e8ee; --muted:#9aa3b2;
+  --brand:#2563eb; --ok:#16a34a; --warn:#d97706; --danger:#dc2626;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--surface);color:var(--text);font:14px/1.5 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+button{font:inherit;color:inherit;background:var(--raised);border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;min-height:34px}
+button:hover{border-color:#3a4252}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:var(--brand);border-color:var(--brand)}
+button.ghost{background:transparent}
+input,select{font:inherit;color:inherit;background:#0b0d11;border:1px solid var(--border);border-radius:8px;padding:6px 10px;min-height:34px}
+h1,h2,h3{margin:0;font-weight:600}
+.app{display:flex;flex-direction:column;height:100vh}
+
+/* ── 顶栏 ── */
+.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid var(--border);background:#0c0e12}
+.brand{font-weight:700;letter-spacing:.5px}
+.brand small{color:var(--muted);font-weight:500;margin-left:6px}
+.count{display:flex;align-items:center;gap:8px;white-space:nowrap;padding:5px 12px;border:1px solid var(--border);border-radius:999px;color:var(--muted);cursor:default}
+.count .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.count.zero .dot{background:var(--warn)}
+.count.zero{color:#f0b060;border-color:#4a3718}
+.code{display:flex;align-items:center;gap:10px;margin-left:auto;white-space:nowrap;padding:5px 12px;border:1px solid var(--border);border-radius:10px;background:#0b0d11}
+.code .label{color:var(--muted);font-size:12px}
+.code .meta{font-size:11px;color:var(--muted);padding:2px 7px;border:1px solid var(--border);border-radius:999px}
+.code .meta.warn{color:#f0b060;border-color:#4a3718}
+.code .meta.used{color:#8fb3ff;border-color:#243a63}
+.code .meta.bad{color:#ff9d9d;border-color:#5a2222}
+.code b{font:600 20px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:3px}
+.code button{min-height:28px;padding:2px 8px}
+.conn{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;white-space:nowrap}
+.conn .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+
+/* ── 场景 Tab ── */
+.tabs{display:flex;align-items:center;gap:8px;padding:10px 20px;border-bottom:1px solid var(--border)}
+.tabs .seg{display:flex;gap:4px;padding:4px;background:#0b0d11;border:1px solid var(--border);border-radius:12px}
+.tabs .seg button{border:none;background:transparent;min-height:36px;padding:7px 22px;border-radius:9px;color:var(--muted)}
+.tabs .seg button[aria-selected="true"]{background:var(--brand);color:#fff}
+.tabs .hint{margin-left:auto;color:var(--muted);font-size:12px}
+
+/* ── 主体 ── */
+.main{flex:1;display:grid;grid-template-columns:340px minmax(0,1fr);gap:16px;padding:16px 20px;min-height:0;overflow:hidden}
+@media (max-width:900px){.main{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) minmax(0,1fr);overflow:auto}.lists{max-height:42vh}}
+.card{background:var(--raised);border:1px solid var(--border);border-radius:14px;padding:14px;min-height:0;overflow:hidden}
+.panel{display:flex;flex-direction:column;min-height:0}
+.panel h3{font-size:13px;color:var(--muted);text-transform:none;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
+.panel h3 .tag{font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:1px 7px;font-weight:400}
+.lists{overflow:auto;flex:1;margin:10px -6px 0;padding:0 6px}
+.group{margin-bottom:14px}
+.group .gh{font-size:12px;color:var(--muted);display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+ol.items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+ol.items li{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:#12151c;cursor:pointer}
+ol.items li:hover{border-color:#3a4252}
+ol.items li.active{border-color:var(--brand);background:#14203a}
+ol.items li .idx{width:18px;color:var(--muted);font:600 12px ui-monospace,monospace}
+ol.items li .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ol.items li .m{font-size:11px;color:var(--muted)}
+ol.items li .mv{opacity:0;display:flex;gap:2px}
+ol.items li:hover .mv{opacity:1}
+ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:transparent;border-color:var(--border)}
+.add{width:100%;margin-top:2px;border-style:dashed;color:var(--muted)}
+.empty{color:var(--muted);font-size:13px;padding:14px 4px}
+
+/* ── 当前内容 ── */
+.now{flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto}
+.now .stage{flex:1;display:flex;align-items:center;justify-content:center;min-height:0}
+.cover{width:170px;height:170px;border-radius:16px;background:linear-gradient(135deg,#2b3a5c,#4a2f57 60%,#1b2437);display:flex;align-items:center;justify-content:center;color:#cbd5e1;font-size:12px;letter-spacing:2px}
+.musictitle{text-align:center;margin-top:14px;font-size:18px}
+.musicsub{text-align:center;color:var(--muted);font-size:12px;margin-top:4px}
+.bar{display:flex;align-items:center;gap:10px;margin-top:14px;color:var(--muted);font:12px ui-monospace,monospace}
+.track{flex:1;height:6px;border-radius:999px;background:#2a3140;position:relative;cursor:pointer}
+.track .fill{position:absolute;inset:0 auto 0 0;width:0;background:var(--brand);border-radius:999px}
+.track .knob{position:absolute;top:-4px;width:14px;height:14px;border-radius:50%;background:#fff;transform:translateX(-7px)}
+.ctrl{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:12px}
+.ctrl button{min-width:42px}
+.ctrl .play{min-width:58px;background:var(--brand);border-color:var(--brand)}
+.extra{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:12px;color:var(--muted);font-size:12px}
+.extra input[type=range]{width:120px}
+.article{max-width:760px;margin:0 auto;width:100%}
+.article .head{display:flex;align-items:baseline;gap:10px;color:var(--muted);font-size:12px;margin-bottom:10px}
+.article .head b{color:var(--text);font-size:15px}
+.verses{font-size:17px;line-height:1.9;color:#dde3ec}
+.verses p{margin:0 0 8px}
+.verses .sn{color:var(--muted);font-size:12px;margin-right:6px}
+.castbox{width:100%;max-width:720px;margin:0 auto}
+.castbox textarea{width:100%;min-height:180px;resize:vertical;font:16px/1.8 system-ui;background:#0b0d11;color:var(--text);border:1px solid var(--border);border-radius:12px;padding:14px}
+.castbar{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
+.idle{text-align:center;color:var(--muted)}
+.idle b{display:block;color:var(--text);font-size:17px;margin-bottom:8px}
+
+/* ── 样式栏 ── */
+.stylebar{border-top:1px solid var(--border);background:#0c0e12;padding:0 20px;flex:0 0 auto;max-height:38vh;overflow:auto}
+.stylebar summary{cursor:pointer;padding:11px 0;font-size:13px;color:var(--muted);list-style:none;display:flex;align-items:center;gap:8px}
+.stylebar summary::-webkit-details-marker{display:none}
+.stylebar summary:before{content:"▸";transition:transform .15s}
+.stylebar[open] summary:before{transform:rotate(90deg)}
+.srow{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;padding:0 0 14px}
+.field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.field input[type=color]{padding:0;width:44px;height:34px;background:none;border:1px solid var(--border)}
+.field input[type=range]{width:130px}
+.hintline{color:var(--muted);font-size:12px;margin-left:auto}
+
+/* ── toast ── */
+#toasts{position:fixed;right:18px;bottom:18px;display:flex;flex-direction:column;gap:8px;z-index:99}
+.toast{background:#1c2331;border:1px solid #33405a;border-radius:10px;padding:9px 14px;font-size:13px;box-shadow:0 8px 24px #0008;animation:in .15s ease}
+.toast.err{border-color:#7f2a2a;background:#2a1717}
+@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.ro{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">CDS<small>教室显示 · 控制台</small></div>
+    <div class="count zero" id="count" title="只读指示，不可点击"><span class="dot"></span><span id="countText">当前 0 个终端在线</span></div>
+    <div class="code">
+      <span class="label">控制码</span><b id="codeText">482 913</b><span class="meta" id="codeMeta">剩 15:00</span>
+      <button id="refreshCode" title="刷新控制码（已连终端不掉线）">⟳</button>
+      <button id="unbindAll" class="ghost" title="全部解绑：所有终端回到输码页" style="font-size:12px">全部解绑</button>
+    </div>
+    <div class="conn"><span class="dot"></span>已连接</div>
+  </header>
+
+  <nav class="tabs">
+    <div class="seg" role="tablist">
+      <button role="tab" data-scene="music" aria-selected="false">音乐</button>
+      <button role="tab" data-scene="article" aria-selected="false">文章</button>
+      <button role="tab" data-scene="cast" aria-selected="false">板书</button>
+    </div>
+    <span class="hint">三场景互斥 · 切换不刷新 · 切回状态保留</span>
+  </nav>
+
+  <main class="main">
+    <section class="card panel">
+      <h3>今日预选 <span class="tag">有序 · 点条目即用</span></h3>
+      <div class="lists">
+        <div class="group">
+          <div class="gh"><span>音乐</span><span id="mCount"></span></div>
+          <ol class="items" id="musicList"></ol>
+          <button class="add" data-add="music">＋ 添加曲目（此处才出现搜索）</button>
+        </div>
+        <div class="group">
+          <div class="gh"><span>文章</span><span id="aCount"></span></div>
+          <ol class="items" id="articleList"></ol>
+          <button class="add" data-add="article">＋ 添加经文</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card now" id="now"></section>
+  </main>
+
+  <details class="stylebar" id="styleDetails">
+    <summary>显示样式：<span id="styleSummary">宋体 · 1.15 · 行高 1.75</span>（下发即生效，不刷新）</summary>
+    <div class="srow">
+      <label class="field">正文字体
+        <select id="sFont">
+          <option value="song">宋体（经文）</option>
+          <option value="hei">黑体</option>
+          <option value="kai">楷体</option>
+          <option value="system-ui">系统默认</option>
+        </select>
+      </label>
+      <label class="field">字号 <span id="sFontVal">1.15</span>
+        <input type="range" id="sScale" min="0.8" max="2" step="0.05" value="1.15">
+      </label>
+      <label class="field">行高 <span id="sLhVal">1.75</span>
+        <input type="range" id="sLh" min="1.2" max="2.2" step="0.05" value="1.75">
+      </label>
+      <label class="field">对齐
+        <select id="sAlign"><option value="left">左对齐</option><option value="center">居中</option></select>
+      </label>
+      <label class="field">正文色<input type="color" id="sFg" value="#dddddd"></label>
+      <label class="field">背景色<input type="color" id="sBg" value="#000000"></label>
+      <button class="primary" id="pushStyle">下发样式</button>
+      <span class="hintline" id="styleState">未下发</span>
+    </div>
+  </details>
+</div>
+<div id="toasts"></div>
+
+<script>
+(function(){
+  'use strict';
+  var LS = window.localStorage, BC = ('BroadcastChannel' in window) ? new BroadcastChannel('cds-proto') : null;
+  var $ = function(id){ return document.getElementById(id); };
+  function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function fmt(ms){ var s=Math.max(0,Math.floor(ms/1000)); return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
+  function toast(msg, isErr){
+    var d=document.createElement('div'); d.className='toast'+(isErr?' err':''); d.textContent=msg;
+    $('toasts').appendChild(d); setTimeout(function(){ d.remove(); }, 4000);
+  }
+
+  // ── 状态 ──
+  var S = {
+    codeObj: { code:'482913', exp: Date.now()+15*60*1000, used:false },
+    scene: 'idle',
+    termOnline: 0,
+    music: { idx: 0, playing: false, pos: 0, items: [
+      { t:'我心灵得安宁', m:'4:05', dur:245000, track:'main' },
+      { t:'奇异恩典', m:'3:42', dur:222000, track:'accompaniment' },
+      { t:'靠近主', m:'5:10', dur:310000, track:'main' }
+    ]},
+    article: { idx: 0, page: 0, items: [
+      { t:'诗篇 23 章', v:'诗篇', ch:23 },
+      { t:'约伯记 3 章', v:'约伯记', ch:3 }
+    ]},
+    cast: { text:'', active:false },
+    style: { fontFamily:{ui:'system-ui',body:'song'}, fontScale:1.15, lineHeight:1.75, fg:'#dde3ec', bg:'#000000', align:'left' }
+  };
+  try{
+    var saved = JSON.parse(LS.getItem('cds.consoleState')||'null');
+    if(saved){ S.music.items = saved.music; S.article.items = saved.article; }
+    var st = JSON.parse(LS.getItem('cds.style')||'null'); if(st) S.style = st;
+    var co = JSON.parse(LS.getItem('cds.codeObj')||'null');
+    if(co) S.codeObj = co;
+    else { var c0 = LS.getItem('cds.consoleCode'); if(c0) S.codeObj = { code:c0, exp: Date.now()+15*60*1000, used:false }; }
+  }catch(e){}
+  function saveLists(){ LS.setItem('cds.consoleState', JSON.stringify({music:S.music.items, article:S.article.items})); }
+
+  function send(msg){ if(BC) BC.postMessage(msg); }
+  var CODE_TTL = 15*60*1000;
+  function shortClock(ms){
+    var t = Math.max(0, Math.floor(ms/1000));
+    return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');
+  }
+  function saveCode(){
+    LS.setItem('cds.codeObj', JSON.stringify(S.codeObj));
+    LS.setItem('cds.consoleCode', S.codeObj.code);
+  }
+  function setCode(c, used){
+    S.codeObj = { code:c, exp: Date.now()+CODE_TTL, used: !!used };
+    saveCode(); renderCode();
+  }
+  function renderCode(){
+    var o = S.codeObj, meta = $('codeMeta'), left = o.exp - Date.now();
+    $('codeText').textContent = o.code.slice(0,3)+' '+o.code.slice(3);
+    if(!meta) return;
+    if(o.used){ meta.textContent = '已使用 · 点⟳为下一台出码'; meta.className='meta used'; }
+    else if(left <= 0){ meta.textContent = '已过期 · 点⟳刷新'; meta.className='meta bad'; }
+    else { meta.textContent = '剩 '+shortClock(left); meta.className = 'meta'+(left < 120000 ? ' warn' : ''); }
+  }
+  setInterval(renderCode, 1000);
+
+  // ── 终端在线（心跳） ──
+  function beat(){
+    var t = +(LS.getItem('cds.displayBeat')||0);
+    var n = (Date.now()-t < 3000) ? 1 : 0;
+    if(n !== S.termOnline){
+      S.termOnline = n;
+      var c = $('count');
+      c.classList.toggle('zero', n===0);
+      $('countText').textContent = n ? '当前 '+n+' 个终端在线' : '当前 0 个终端在线';
+      if(n===1) toast('教室屏幕已连上');
+      else toast('教室屏幕已断开', true);
+      render();
+    }
+  }
+  setInterval(beat, 1000);
+
+  // ── 场景切换 ──
+  function gotoScene(scene){
+    if(scene === S.scene) return;
+    S.scene = scene;
+    if(scene === 'music' && S.music.playing === false && S.music.pos > 0) S.music.playing = true;
+    if(scene !== 'music') S.music.playing = false;
+    send({kind:'scene', scene:scene});
+    if(scene==='music') send({kind:'music', playing:S.music.playing, pos:S.music.pos, idx:S.music.idx});
+    if(scene==='article') send({kind:'article', idx:S.article.idx, page:S.article.page});
+    if(scene==='cast') send({kind:'cast', active:S.cast.active, text:S.cast.text, scene:'cast'});
+    render();
+  }
+
+  // ── 渲染 ──
+  function renderTabs(){
+    document.querySelectorAll('.seg button').forEach(function(b){
+      b.setAttribute('aria-selected', String(b.dataset.scene === S.scene));
+    });
+  }
+
+  function renderLists(){
+    function row(it, i, kind, active){
+      var meta = kind==='music' ? it.m : (it.v+' '+it.ch+' 章');
+      return '<li data-kind="'+kind+'" data-i="'+i+'" class="'+(active?'active':'')+'">'+
+        '<span class="idx">'+(i+1)+'</span><span class="t">'+esc(it.t)+'</span><span class="m">'+esc(meta)+'</span>'+
+        '<span class="mv"><button data-up="'+i+'" title="上移">↑</button><button data-down="'+i+'" title="下移">↓</button><button data-del="'+i+'" title="移除">✕</button></span></li>';
+    }
+    $('musicList').innerHTML = S.music.items.map(function(it,i){ return row(it,i,'music', S.scene==='music' && i===S.music.idx); }).join('') ||
+      '<li class="empty" style="cursor:default">今天还没排音乐，点下面＋添加</li>';
+    $('articleList').innerHTML = S.article.items.map(function(it,i){ return row(it,i,'article', S.scene==='article' && i===S.article.idx); }).join('') ||
+      '<li class="empty" style="cursor:default">今天还没排经文</li>';
+    $('mCount').textContent = S.music.items.length+' 条';
+    $('aCount').textContent = S.article.items.length+' 条';
+  }
+
+  var VERSES = {
+    23: [['1','耶和华是我的牧者，我必不致缺乏。'],['2','他使我躺卧在青草地上，领我在可安歇的水边。'],['3','他使我的灵魂苏醒，为自己的名引导我走义路。'],['4','我虽然行过死荫的幽谷，也不怕遭害，因为你与我同在。'],['5','在我敌人面前，你为我摆设筵席；你用油膏了我的头，使我的福杯满溢。'],['6','我一生一世必有恩惠慈爱随着我，我且要住在耶和华的殿中，直到永远。']],
+    3: [['1','此后，约伯开口咒诅自己的生日。'],['2','说：愿我生的那日和说怀了男胎的那夜都灭没。'],['3','愿那日变为黑暗；愿神不从上面寻找它。']]
+  };
+
+  function render(){
+    renderTabs(); renderLists();
+    var n = $('now'), html='';
+    if(S.scene === 'idle'){
+      html = '<div class="stage"><div class="idle"><b>还没有投出内容</b>在左边挑一条，或直接点上方「音乐 / 文章 / 板书」开始。<br><span style="font-size:12px">教室屏幕此刻显示待机画面</span></div></div>';
+    } else if(S.scene === 'music'){
+      var it = S.music.items[S.music.idx] || { t:'（清单为空）', m:'--:--', dur:245000 };
+      html = '<div class="stage"><div style="width:100%">'+
+        '<div style="display:flex;justify-content:center"><div class="cover">COVER</div></div>'+
+        '<div class="musictitle">'+esc(it.t)+'</div>'+
+        '<div class="musicsub">主音轨 · 预选第 '+(S.music.idx+1)+' / '+S.music.items.length+' 首</div>'+
+        '<div class="bar"><span id="posLabel">'+fmt(S.music.pos)+'</span><div class="track" id="track"><div class="fill" id="fill"></div><div class="knob" id="knob"></div></div><span>'+it.m+'</span></div>'+
+        '<div class="ctrl">'+
+          '<button data-m="prev" title="清单上一首">⏮</button>'+
+          '<button data-m="skip" title="-5s">−5s</button>'+
+          '<button class="play" data-m="toggle">'+(S.music.playing?'暂停':'播放')+'</button>'+
+          '<button data-m="skip2" title="+5s">+5s</button>'+
+          '<button data-m="next" title="清单下一首">⏭</button>'+
+        '</div>'+
+        '<div class="extra"><span>音量</span><input type="range" min="0" max="100" value="50" id="vol">'+
+        '<button class="ghost" style="font-size:12px" data-m="track">切伴奏</button>'+
+        '<span class="ro">（切走场景时自动暂停并记住位置）</span></div>'+
+      '</div></div>';
+    } else if(S.scene === 'article'){
+      var a = S.article.items[S.article.idx] || {v:'诗篇',ch:23,t:'诗篇 23 章'};
+      var vs = VERSES[a.ch] || VERSES[23];
+      var start = S.article.page * 3, slice = vs.slice(start, start+3);
+      html = '<div class="stage"><div class="article" style="font-size:'+(17*S.style.fontScale).toFixed(1)+'px;line-height:'+S.style.lineHeight+';text-align:'+S.style.align+'">'+
+        '<div class="head"><b>'+esc(a.t)+'</b><span>预选第 '+(S.article.idx+1)+' 条</span><span style="margin-left:auto">第 '+(S.article.page+1)+' 屏</span></div>'+
+        '<div class="verses">'+ slice.map(function(v){ return '<p><span class="sn">'+v[0]+'</span>'+esc(v[1])+'</p>'; }).join('') +'</div>'+
+        '<div class="castbar"><button data-a="prev">上一屏</button><button class="primary" data-a="next">下一屏</button><button class="ghost" data-a="clear">清屏</button></div>'+
+      '</div></div>';
+    } else {
+      html = '<div class="stage"><div class="castbox">'+
+        '<div class="head" style="display:flex;gap:10px;color:var(--muted);font-size:12px;margin-bottom:10px"><b style="color:var(--text);font-size:15px">板书</b><span>独占全屏 · 不再有"半屏 + 窄栏"</span></div>'+
+        '<textarea id="castText" placeholder="在这里写板书正文，或选择图片 / PDF…">'+esc(S.cast.text)+'</textarea>'+
+        '<div class="castbar">'+
+          '<button class="ghost" id="castPick">选择图片 / PDF</button>'+
+          '<button class="'+(S.cast.active?'':'primary')+'" id="castToggle">'+(S.cast.active?'结束板书':'投出到教室屏幕')+'</button>'+
+        '</div></div></div>';
+    }
+    n.innerHTML = html;
+    renderProgress();
+  }
+
+  function renderProgress(){
+    var fill=$('fill'), knob=$('knob'), pos=$('posLabel');
+    if(!fill) return;
+    var d = (S.music.items[S.music.idx]||{dur:245000}).dur;
+    var p = Math.min(1, S.music.pos/d);
+    fill.style.width = (p*100)+'%'; knob.style.left = (p*100)+'%';
+    if(pos) pos.textContent = fmt(S.music.pos);
+  }
+
+  var timer = setInterval(function(){
+    if(S.scene==='music' && S.music.playing){
+      S.music.pos += 250;
+      var d=(S.music.items[S.music.idx]||{dur:245000}).dur;
+      if(S.music.pos >= d){
+        if(S.music.idx < S.music.items.length-1){ S.music.idx++; S.music.pos=0; toast('自动播放清单下一首'); render(); }
+        else { S.music.playing=false; S.music.pos=0; toast('已到清单末尾'); render(); }
+      }
+      renderProgress();
+    }
+  }, 250);
+
+  // ── 事件 ──
+  document.querySelector('.seg').addEventListener('click', function(e){
+    var b=e.target.closest('button[data-scene]'); if(!b) return;
+    if(S.termOnline===0 && b.dataset.scene!=='idle'){ /* 离线仍可点，但提示 */ }
+    gotoScene(b.dataset.scene);
+  });
+
+  document.querySelector('.lists').addEventListener('click', function(e){
+    var mv=e.target.closest('button[data-up],button[data-down],button[data-del]');
+    var li=e.target.closest('li[data-kind]');
+    if(!li) return;
+    var kind=li.dataset.kind, arr = kind==='music'?S.music.items:S.article.items, i=+li.dataset.i;
+    if(mv){
+      e.stopPropagation();
+      if(mv.dataset.del!==undefined){ arr.splice(i,1); if(kind==='music'&&S.music.idx>=arr.length) S.music.idx=Math.max(0,arr.length-1); }
+      else if(mv.dataset.up!==undefined && i>0){ var t=arr[i-1]; arr[i-1]=arr[i]; arr[i]=t; }
+      else if(mv.dataset.down!==undefined && i<arr.length-1){ var t2=arr[i+1]; arr[i+1]=arr[i]; arr[i]=t2; }
+      saveLists(); render(); return;
+    }
+    // 点条目即用
+    if(kind==='music'){
+      S.music.idx=i; S.music.pos=0; S.music.playing=true; S.scene='music';
+      send({kind:'scene',scene:'music'}); send({kind:'play', idx:i, pos:0});
+      toast('已从「'+arr[i].t+'」开始播放');
+    } else {
+      S.article.idx=i; S.article.page=0; S.scene='article';
+      send({kind:'scene',scene:'article'}); send({kind:'article', idx:i, page:0});
+      toast('已定位到「'+arr[i].t+'」');
+    }
+    render();
+  });
+
+  document.querySelectorAll('.add').forEach(function(b){
+    b.addEventListener('click', function(){
+      var kind=b.dataset.add;
+      if(kind==='music'){
+        var name = prompt('添加曲目（原型用输入代替搜索框）','新加的诗歌');
+        if(name){ S.music.items.push({t:name,m:'--:--',dur:240000,track:'main'}); saveLists(); render(); toast('已加入预选末尾'); }
+      } else {
+        var name2 = prompt('添加经文（如：诗篇 23 章）','诗篇 23 章');
+        if(name2) { S.article.items.push({t:name2,v:'诗篇',ch:23}); saveLists(); render(); toast('已加入预选末尾'); }
+      }
+    });
+  });
+
+  $('now').addEventListener('click', function(e){
+    var m = e.target.closest('button[data-m]'), a = e.target.closest('button[data-a]');
+    if(m){
+      var k=m.dataset.m;
+      if(k==='toggle'){ S.music.playing=!S.music.playing; if(S.music.playing) S.scene='music'; }
+      if(k==='skip') S.music.pos=Math.max(0,S.music.pos-5000);
+      if(k==='skip2') S.music.pos=Math.min(300000,S.music.pos+5000);
+      if(k==='prev'){ S.music.idx=Math.max(0,S.music.idx-1); S.music.pos=0; S.music.playing=true; }
+      if(k==='next'){ S.music.idx=Math.min(S.music.items.length-1,S.music.idx+1); S.music.pos=0; S.music.playing=true; }
+      if(k==='track') toast('已切换音轨（原型示意）');
+      send({kind:'music', playing:S.music.playing, pos:S.music.pos, idx:S.music.idx, action:k});
+      render(); return;
+    }
+    if(a){
+      var k2=a.dataset.a;
+      if(k2==='next'){ S.article.page++; }
+      if(k2==='prev'){ S.article.page=Math.max(0,S.article.page-1); }
+      if(k2==='clear'){ S.scene='idle'; send({kind:'scene',scene:'idle'}); }
+      send({kind:'article', idx:S.article.idx, page:S.article.page});
+      render(); return;
+    }
+    if(e.target.id==='castToggle'){
+      S.cast.text = (document.getElementById('castText')||{}).value || S.cast.text;
+      S.cast.active = !S.cast.active;
+      send({kind:'cast', active:S.cast.active, text:S.cast.text, scene:(S.cast.active?'cast':'idle')});
+      toast(S.cast.active?'板书已投出':'已结束板书（屏幕回待机）');
+      if(!S.cast.active) S.scene='idle';
+      render(); return;
+    }
+    if(e.target.id==='castPick') toast('图片 / PDF 上传走 R2 预签名（原型不实现）');
+  });
+
+  // 点进度条跳转
+  document.addEventListener('click', function(e){
+    if(e.target.closest('#track')){
+      var r = e.target.closest('#track').getBoundingClientRect();
+      var p = Math.min(1, Math.max(0, (e.clientX-r.left)/r.width));
+      var d = (S.music.items[S.music.idx]||{dur:245000}).dur;
+      S.music.pos = Math.round(p*d);
+      send({kind:'music', playing:S.music.playing, pos:S.music.pos, idx:S.music.idx, action:'seek'});
+      renderProgress();
+    }
+  });
+
+  var inputTimer;
+  $('now').addEventListener('input', function(e){
+    if(e.target.id==='castText'){ S.cast.text=e.target.value; clearTimeout(inputTimer); inputTimer=setTimeout(function(){ send({kind:'cast',active:S.cast.active,text:S.cast.text}); },400); }
+    if(e.target.id==='vol'){ send({kind:'volume', value:+e.target.value}); }
+  });
+
+  // ── 控制码 ──
+  $('refreshCode').addEventListener('click', function(){
+    var c = String(Math.floor(100000+Math.random()*900000));
+    setCode(c);
+    send({kind:'codeChanged', code:c});
+    toast('已生成新控制码（15 分钟内有效，绑定一次即作废；已连终端不掉线）');
+  });
+  var unbindArmed = false, unbindTimer = null;
+  $('unbindAll').addEventListener('click', function(){
+    var b = this;
+    if(!unbindArmed){
+      unbindArmed = true; b.textContent = '再点一次确认';
+      clearTimeout(unbindTimer);
+      unbindTimer = setTimeout(function(){ unbindArmed=false; b.textContent='全部解绑'; }, 3000);
+      return;
+    }
+    clearTimeout(unbindTimer); unbindArmed=false; b.textContent='全部解绑';
+    send({kind:'revoke'});
+    toast('已全部解绑：所有屏幕回到输码页', true);
+  });
+
+  // ── 样式下发 ──
+  var map = { song:'"Songti SC","Noto Serif SC",serif', hei:'"PingFang SC","Microsoft YaHei",sans-serif', kai:'"Kaiti SC",KaiTi,serif', 'system-ui':'system-ui,sans-serif' };
+  function readStyle(){
+    S.style = {
+      fontFamily:{ ui:'system-ui', body:$('sFont').value },
+      fontScale:+$('sScale').value, lineHeight:+$('sLh').value,
+      fg:$('sFg').value, bg:$('sBg').value, align:$('sAlign').value
+    };
+    $('sFontVal').textContent = S.style.fontScale.toFixed(2);
+    $('sLhVal').textContent = S.style.lineHeight.toFixed(2);
+    var sm=$('styleSummary'); if(sm) sm.textContent=($('sFont').selectedOptions[0]||{}).textContent+' · '+S.style.fontScale.toFixed(2)+' · 行高 '+S.style.lineHeight.toFixed(2);
+    return S.style;
+  }
+  ['sFont','sScale','sLh','sAlign','sFg','sBg'].forEach(function(id){
+    $(id).addEventListener('input', function(){ readStyle(); $('styleState').textContent='未下发（有改动）'; });
+  });
+  $('pushStyle').addEventListener('click', function(){
+    var st = readStyle(); st.styleVersion = Date.now();
+    st.fontStack = map[st.fontFamily.body] || 'system-ui,sans-serif';
+    LS.setItem('cds.style', JSON.stringify(st));
+    send({kind:'style', style:st});
+    $('styleState').textContent = '已下发 v'+String(st.styleVersion).slice(-4)+' · 等待回执';
+    setTimeout(function(){ $('styleState').textContent='已生效（显示端 '+S.termOnline+' 台）'; }, 600);
+    render();
+  });
+
+  // ── 显示端回执 ──
+  if(BC) BC.onmessage = function(ev){
+    var d = ev.data||{};
+    if(d.kind==='ack') toast(d.text||'显示端已确认');
+    if(d.kind==='ackBound'){
+      S.codeObj.used = true; saveCode(); renderCode();
+      toast('教室屏幕已绑定：本码已作废，接第二台请点 ⟳ 生成新码');
+      beat();
+    }
+    if(d.kind==='audioBlocked') toast('教室屏幕需点一下才能出声（ack 4002）', true);
+  };
+
+  // ── 初始化 ──
+  renderCode();
+  $('sFont').value = (S.style.fontFamily && S.style.fontFamily.body) || 'song';
+  $('sScale').value = S.style.fontScale; $('sLh').value = S.style.lineHeight;
+  $('sFg').value = S.style.fg === '#dde3ec' ? '#dddddd' : S.style.fg; $('sBg').value = S.style.bg;
+  $('sAlign').value = S.style.align || 'left';
+  readStyle();
+  LS.setItem('cds.style', JSON.stringify(S.style));
+  beat(); render();
+})();
+</script>
+</body>
+</html>
