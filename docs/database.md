@@ -1,7 +1,7 @@
 # Class Display System 数据库设计文档
 
 ## 📋 文档信息
-- **版本**: V2.2.4
+- **版本**: V2.2.5
 - **更新日期**: 2026-11-18 22:20
 - **数据库**: Cloudflare D1 (SQLite)
 
@@ -261,7 +261,8 @@ books ──> verses (book_id + chapter_sn，章为派生维度)
 
 ## 变更记录
 
-- **V2.2.4 (2026-11-18)**：**V2.2.3 的 rev3（guest 归属键）整体作废；`control_codes` 回到 rev2 的 4 列**（Jeremyzh 22:10 裁决「控制端一定需要登录」；零 schema 变更，0005 仍按 rev2 promote）。① `control_codes` 形状恢复为 `(user_id, code, rotated_at, created_at)`：一用户一张、8 位数字、**长期有效、无 `expires_at`**；② `owner_kind` / `ix_control_codes_kind` / `g_`+16hex 归属键 / guest 凭证均不存在，`device_bindings.user_id` 与 `device_bind_events.user_id` 仍只装 `users.username`；③ rev3 档案在 `docs/changes/superseded/0005_control_codes_and_styles.rev3-guest归属键.SUPERSEDED`（**不得**放回 `migrations/`）；④ 码失效的唯一途径是控制端 `rotate`（旧码从库里消失），其运行时后果（已绑屏判 `revoked`/`code_rotated`）见 `api.md` §4.6 / V2.2.15。
+- **V2.2.5 (2026-11-18)**：**rev3 归档路径订正为「仓库外 + 台账」＋ 记 KR-0005-01 关闸件（零 schema 变更）**。① V2.2.4 ③ 写「rev3 档案在 `docs/changes/superseded/…`」，而本仓库 `ls-tree` 无 `docs/changes/` 目录 ⇒ 该路径只在运维侧 `shared/` 树成立（与 `migrations/` 同一类，V2.2.2 已立过这条口径，此处是第二次复发）。已改为「仓库外 + `migrations/README-0005.md` 台账」；`database.md` 内历史条目中的 `docs/changes/…` 同指仓库外，不回改（R-02）。② **KR-0005-01**（附 2·A「码查不到 ⇒ `4004`」应为 `4092`）由开发 **rev2b** 关闸：16,193 B / `de69930a…e2f61`，去注释与空行后 sha **`3632ce3e…f77cad5`（2,476 B）**与 rev2 相同 ⇒ DDL 未动；本表结构与 V2.2.4 所述 rev2 形状**完全一致**（`control_codes` 4 列、无 `expires_at`／`owner_kind`、5 表、索引 15 行（具名 10 / 自动 5））。**未动**：任何表结构、列、索引、外键、`scene_styles` 6 列与 JSON 存储口径。
+- **V2.2.4 (2026-11-18)**：**V2.2.3 的 rev3（guest 归属键）整体作废；`control_codes` 回到 rev2 的 4 列**（Jeremyzh 22:10 裁决「控制端一定需要登录」；零 schema 变更，0005 仍按 rev2 promote）。① `control_codes` 形状恢复为 `(user_id, code, rotated_at, created_at)`：一用户一张、8 位数字、**长期有效、无 `expires_at`**；② `owner_kind` / `ix_control_codes_kind` / `g_`+16hex 归属键 / guest 凭证均不存在，`device_bindings.user_id` 与 `device_bind_events.user_id` 仍只装 `users.username`；③ rev3 档案在**仓库外**（`shared/docs/changes/superseded/0005_control_codes_and_styles.rev3-guest归属键.SUPERSEDED`；本仓库不含 `docs/changes/`，解析点一律是 `migrations/README-0005.md` 台账——指针已由 V2.2.5 订正），**不得**放回 `migrations/`；④ 码失效的唯一途径是控制端 `rotate`（旧码从库里消失），其运行时后果（已绑屏判 `revoked`/`code_rotated`）见 `api.md` §4.6 / V2.2.15。
 - **V2.2.3 (2026-11-18)**：~~`control_codes` 形状改为「一个 owner 一张」（rev3）~~ —— **本版已于 V2.2.4 整体作废**，保留此行仅为版本可回溯（按 R-02：不删历史陈述，只标注失效）。
 - **V2.2.2 (2026-11-18)**：**0005 指针改为「文件名＋运维台账」，并记明 DDL 不在本仓库**（零 schema 变更）。起因：`migrations/` 里原有那份 `0005_control_codes_and_styles.sql` 是 **CO-05 之前的旧模型**（`control_codes.code` 主键、`expires_at` 15min、`used_at` 一次性消费、**无** `device_bindings`），运维已将其移出应用路径（`docs/changes/superseded/0005_control_codes_and_styles.pre-co05.SUPERSEDED`，11,174 B），而本文档仍指向 `migrations/0005` rev2 草案 ⇒ 维护窗口照指针执行会落到废止模型（`GET /devices/me` 的三态与 `POST /devices/me/release` 将无表可依，`revoked_at` 在 `device_bindings` 里）。① 指针改为 `migrations/0005_control_codes_and_styles.sql`（rev2 定稿，逐字节复制、不改内容）；② 明确**本仓库不含 `migrations/` 目录**——DDL 由运维维护，sha256 与 apply 前后断言以 `migrations/README-0005.md` 为准；③ 同源修正 `api.md` V2.2.12、`mqtt.md` V2.2.31。**未动**：任何表结构、列、索引。④ 另记一条实现前提（运维 21:5x 提出、我确认）：rev2 **不含 `device_bindings` backfill**，故 apply 必须在**首次装机配对之前**——当前两库 `devices` 均 0 行，本次无需 backfill；一旦先做过配对，须先补 `INSERT OR IGNORE INTO device_bindings(device_id,user_id,bound_at,updated_at) SELECT device_id,user_id,bound_at,unixepoch() FROM devices WHERE user_id IS NOT NULL`，否则既有屏全部落成「从未绑定」。
 - **V2.2 (2026-11-17)**：落地裁决 D-01（章为派生维度不建表、唯一性落在经节粒度、章列表接口分页），补本轮编辑说明；版本与 `api.md` / `mqtt.md` 对齐。
