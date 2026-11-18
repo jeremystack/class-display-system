@@ -1,0 +1,1623 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Class Display System · 页面原型 V0.1</title>
+<style>
+:root{
+  --surface:#0f1115; --raised:#171a21; --raised2:#1d222b;
+  --border:#262b36; --text:#e6e8ee; --muted:#9aa3b2;
+  --brand:#2563eb; --brand2:#3b82f6;
+  --ok:#16a34a; --warn:#d97706; --danger:#dc2626;
+  --r-sm:8px; --r-md:12px; --r-lg:16px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--surface);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;
+  padding-bottom:56px;
+}
+h1,h2,h3,h4,p{margin:0}
+button{font:inherit;color:inherit;cursor:pointer}
+input,textarea,select{font:inherit;color:inherit}
+a{color:var(--brand2)}
+.hide{display:none!important}
+.muted{color:var(--muted)}
+.tiny{font-size:11px}
+.small{font-size:12px}
+.mono{font-variant-numeric:tabular-nums}
+.row{display:flex;align-items:center;gap:8px}
+.row.wrap{flex-wrap:wrap}
+.between{justify-content:space-between}
+.grow{flex:1;min-width:0}
+.stack{display:flex;flex-direction:column;gap:12px}
+.mt8{margin-top:8px}.mt12{margin-top:12px}.mt16{margin-top:16px}.mt20{margin-top:20px}
+.center{text-align:center}
+.right{text-align:right}
+.nowrap{white-space:nowrap}
+
+/* ---------- app chrome ---------- */
+.appbar{
+  position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:12px;
+  padding:10px 14px;background:rgba(15,17,21,.94);backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--border);flex-wrap:wrap;
+}
+.brand{display:flex;align-items:center;gap:8px;font-weight:600;letter-spacing:.01em}
+.brandMark{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#2563eb,#22d3ee);display:grid;place-items:center;font-size:11px;font-weight:700;color:#04121f}
+.brandSub{color:var(--muted);font-weight:400;font-size:12px}
+.seg{display:flex;gap:2px;background:var(--raised);border:1px solid var(--border);border-radius:999px;padding:3px;margin-left:auto}
+.seg button{background:none;border:0;border-radius:999px;padding:6px 14px;font-size:13px;color:var(--muted)}
+.seg button.is-on{background:var(--brand);color:#fff;font-weight:600}
+
+/* ---------- buttons ---------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  min-height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--border);
+  background:var(--raised2);color:var(--text);font-size:14px;transition:.15s;
+}
+.btn:hover{border-color:#3a4250}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+.btn.primary:hover{background:#1d4ed8}
+.btn.ghost{background:transparent}
+.btn.danger{border-color:#5b1a1a;color:#fca5a5;background:#2a1113}
+.btn.sm{min-height:32px;padding:0 10px;font-size:12px;border-radius:8px}
+.btn.block{width:100%}
+.btn.icon{min-width:44px;min-height:44px;padding:0;font-size:16px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-size:11px;border:1px solid var(--border);background:var(--raised2);color:var(--muted);white-space:nowrap}
+.pill.brand{border-color:#1e3a8a;color:#93c5fd;background:#101a33}
+.pill.warn{border-color:#78350f;color:#fcd34d;background:#241a07}
+.pill.danger{border-color:#7f1d1d;color:#fca5a5;background:#26100f}
+.pill.ok{border-color:#14532d;color:#86efac;background:#0d1f16}
+.dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.dot.ok{background:var(--ok);box-shadow:0 0 0 3px rgba(22,163,74,.18)}
+.dot.warn{background:var(--warn);box-shadow:0 0 0 3px rgba(217,119,6,.18)}
+.dot.danger{background:var(--danger);box-shadow:0 0 0 3px rgba(220,38,38,.18)}
+.dot.idle{background:#4b5563}
+
+/* ---------- shells ---------- */
+.wrapPage{max-width:1120px;margin:0 auto;padding:16px}
+.narrow{max-width:440px;margin:0 auto}
+.screen{display:none}
+.screen.is-active{display:block}
+.card{background:var(--raised);border:1px solid var(--border);border-radius:var(--r-lg);padding:14px}
+.card.tight{padding:12px}
+.cardTitle{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.cardTitle .t{font-size:13px;font-weight:600;letter-spacing:.02em;color:#cfd5e1}
+.hair{height:1px;background:var(--border);margin:10px 0}
+
+label.field{display:block;margin-top:12px}
+label.field .lb{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+.input{
+  width:100%;min-height:42px;padding:9px 12px;border-radius:10px;
+  background:#0c0e13;border:1px solid var(--border);color:var(--text);
+}
+.input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.18)}
+textarea.input{min-height:110px;resize:vertical;line-height:1.6}
+#castText{min-height:118px}
+
+/* ---------- login ---------- */
+.authHero{padding:26px 4px 18px}
+.authLogo{width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,#2563eb,#22d3ee);display:grid;place-items:center;font-weight:700;color:#04121f;font-size:20px}
+.authTitle{font-size:22px;font-weight:600;margin-top:14px}
+
+/* ---------- device code ---------- */
+.codeBoxes{display:flex;gap:8px}
+.codeBoxes input{
+  width:44px;height:52px;text-align:center;font-size:20px;font-weight:600;
+  border-radius:10px;border:1px solid var(--border);background:#0c0e13;color:var(--text);
+  font-variant-numeric:tabular-nums;
+}
+.codeBoxes input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.2)}
+.devCard{display:flex;gap:12px;align-items:flex-start;padding:12px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--raised)}
+.devCard.offline{opacity:.62}
+.devCard.occupied{border-color:#5b1a1a;background:#1c1214}
+.devThumb{width:46px;height:46px;border-radius:10px;background:linear-gradient(135deg,#1f2937,#0b1220);display:grid;place-items:center;font-size:18px;border:1px solid var(--border);flex:0 0 auto}
+.devName{font-weight:600;font-size:14px}
+
+/* ---------- tabs ---------- */
+.tabs{display:flex;gap:4px;background:var(--raised);border:1px solid var(--border);border-radius:12px;padding:4px}
+.tabs button{flex:1;background:none;border:0;border-radius:9px;padding:8px 0;font-size:13px;color:var(--muted);min-height:36px}
+.tabs button.is-on{background:var(--raised2);color:var(--text);font-weight:600;box-shadow:inset 0 0 0 1px var(--border)}
+
+/* ---------- console layout ---------- */
+.consoleGrid{display:grid;grid-template-columns:1fr;gap:14px}
+@media(min-width:1024px){
+  .consoleGrid{grid-template-columns:minmax(0,1fr) 360px;align-items:start}
+  .consoleRight{position:sticky;top:76px}
+}
+
+/* ---------- music ---------- */
+.search{position:relative}
+.search input{padding-left:34px}
+.search .ico{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:13px}
+.nowCard{display:flex;gap:12px;align-items:center;padding:12px;border-radius:var(--r-md);background:linear-gradient(180deg,#1b2433,#141821);border:1px solid #22303f}
+.cover{width:64px;height:64px;border-radius:10px;flex:0 0 auto;position:relative;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.4)}
+.cover::after{content:"";position:absolute;inset:0;background:
+  radial-gradient(circle at 30% 25%,rgba(255,255,255,.35),transparent 45%),
+  radial-gradient(circle at 75% 80%,rgba(0,0,0,.45),transparent 55%)}
+.cover.big{width:100%;aspect-ratio:1/1;height:auto;border-radius:18px}
+.songRow{display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:10px;border:1px solid transparent;cursor:pointer}
+.songRow:hover{background:var(--raised2)}
+.songRow.is-on{background:#132033;border-color:#1e3a8a}
+.songRow .idx{width:20px;text-align:center;color:var(--muted);font-size:12px}
+.songRow .stitle{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.songRow .smeta{font-size:11px;color:var(--muted);margin-top:2px;display:flex;gap:6px;align-items:center}
+.eq{display:inline-flex;gap:2px;align-items:flex-end;height:12px}
+.eq i{width:2px;background:var(--brand2);display:block;animation:eq .9s ease-in-out infinite}
+.eq i:nth-child(1){height:5px;animation-delay:0s}
+.eq i:nth-child(2){height:10px;animation-delay:.15s}
+.eq i:nth-child(3){height:7px;animation-delay:.3s}
+@keyframes eq{0%,100%{transform:scaleY(.5)}50%{transform:scaleY(1)}}
+
+/* range */
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;background:transparent;height:28px;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:999px;background:#2a3140}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#fff;margin-top:-5px;border:0;box-shadow:0 1px 4px rgba(0,0,0,.6)}
+input[type=range]::-moz-range-track{height:6px;border-radius:999px;background:#2a3140}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border:0;border-radius:50%;background:#fff}
+input[type=range]:disabled{opacity:.5}
+
+/* ---------- article ---------- */
+.volList{display:flex;flex-direction:column;gap:4px}
+.volRow{display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:10px;cursor:pointer;border:1px solid transparent}
+.volRow:hover{background:var(--raised2)}
+.volRow.is-on{background:#132033;border-color:#1e3a8a}
+.volShort{width:28px;height:28px;border-radius:8px;background:#202836;display:grid;place-items:center;font-size:12px;color:#c7d2e0;flex:0 0 auto}
+.groupLabel{font-size:11px;letter-spacing:.08em;color:#7d8798;margin:10px 0 4px}
+.chGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:6px}
+.chBtn{min-height:44px;border-radius:9px;border:1px solid var(--border);background:#12151c;display:grid;place-items:center;font-size:13px;font-variant-numeric:tabular-nums;color:#cbd3e0}
+.chBtn:hover{border-color:#3a4250;background:var(--raised2)}
+.chBtn.is-on{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+.chBtn.void{color:#4a5262;cursor:not-allowed;background:#0f1218}
+.chBtn small{display:block;font-size:9px;color:#6b7280}
+.reader{background:#0b0d12;border:1px solid var(--border);border-radius:var(--r-md);padding:14px;min-height:220px}
+.verse{font-size:15px;line-height:1.95;color:#dfe4ee;margin-bottom:8px;transition:background .2s}
+.verse .vn{color:#7d8798;font-size:11px;margin-right:6px;vertical-align:super}
+.verse.hit{background:rgba(37,99,235,.14);border-radius:6px;box-shadow:0 0 0 6px rgba(37,99,235,.14)}
+.bookmarkRow{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:12px}
+.bookmarkRow:hover{background:var(--raised2)}
+
+/* ---------- toast / spinner ---------- */
+#toasts{position:fixed;left:50%;bottom:76px;transform:translateX(-50%);z-index:80;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;width:min(92vw,420px)}
+.toast{background:#22262f;border:1px solid #333a46;color:var(--text);border-radius:10px;padding:10px 14px;font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.5);animation:tin .2s ease-out}
+.toast.warn{border-color:#78350f;background:#241a07;color:#fde68a}
+@keyframes tin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.spinner{width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,.22);border-top-color:#fff;display:inline-block;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.sliderWrap{position:relative}
+.sliderBadge{position:absolute;right:0;top:-20px;display:flex;align-items:center;gap:6px;font-size:11px;color:#bfdbfe}
+
+/* ---------- cast ---------- */
+.castTabs{display:flex;gap:6px;margin-bottom:10px}
+.castTabs button{flex:1;min-height:34px;border-radius:9px;border:1px solid var(--border);background:#12151c;font-size:12px;color:var(--muted)}
+.castTabs button.is-on{background:#132033;border-color:#1e3a8a;color:#bfdbfe;font-weight:600}
+.thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.thumb{padding-top:62%;border-radius:8px;border:2px solid transparent;cursor:pointer;position:relative;overflow:hidden}
+.thumb.is-on{border-color:var(--brand2)}
+.thumb span{position:absolute;left:0;right:0;bottom:0;font-size:10px;padding:3px 4px;background:rgba(0,0,0,.55);color:#dbe3ef;text-align:center}
+.preview{position:relative;border:1px dashed #354052;border-radius:10px;background:#0b0d12;padding:12px;min-height:96px;display:grid;place-items:center;text-align:center;font-size:12px;color:#aab4c4}
+.docCard{background:#f7f6f1;color:#1b1b1b;border-radius:8px;padding:14px;text-align:left;font-size:11px;line-height:1.7;width:100%}
+.docCard b{font-size:13px}
+.statusKv{display:flex;justify-content:space-between;gap:8px;padding:6px 0;font-size:12px;border-bottom:1px dashed #22283300}
+.statusKv:last-child{border-bottom:0}
+.statusKv .k{color:var(--muted)}
+.strip{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:10px;font-size:12px}
+.strip.warn{background:#241a07;border:1px solid #78350f;color:#fcd34d}
+.strip.danger{background:#26100f;border:1px solid #7f1d1d;color:#fca5a5}
+
+/* ---------- display stage ---------- */
+.dispBar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.dispBar .seg2{display:flex;gap:2px;background:var(--raised);border:1px solid var(--border);border-radius:10px;padding:3px;flex-wrap:wrap}
+.dispBar .seg2 button{background:none;border:0;border-radius:8px;padding:6px 10px;font-size:12px;color:var(--muted)}
+.dispBar .seg2 button.is-on{background:#1e293b;color:#e6e8ee;font-weight:600}
+.stageWrap{position:relative;width:100%;aspect-ratio:16/9;background:#000;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.stage{position:absolute;top:0;left:0;width:1920px;height:1080px;transform-origin:top left;font-size:18px;background:#000;overflow:hidden}
+.scene{position:absolute;inset:0;display:none}
+.scene.is-active{display:block}
+.safe{position:absolute;inset:96px;display:flex;flex-direction:column}
+
+/* pair */
+.pairBg{position:absolute;inset:0;background:radial-gradient(1200px 700px at 50% 12%,#12203a,#050709 70%)}
+.pairCode{display:flex;gap:18px;justify-content:center}
+.pairCode div{width:112px;height:140px;border-radius:18px;background:#0b1220;border:2px solid #24334a;display:grid;place-items:center;font-size:64px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums;box-shadow:inset 0 -6px 0 rgba(0,0,0,.4)}
+.qr{width:220px;height:220px;background:#fff;border-radius:12px;padding:10px;display:grid;grid-template-columns:repeat(21,1fr);grid-template-rows:repeat(21,1fr);gap:0}
+.qr i{display:block}
+/* display music */
+.dMusicCover{width:560px;height:560px;border-radius:32px;position:relative;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+.dMusicCover::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 30% 25%,rgba(255,255,255,.35),transparent 45%),radial-gradient(circle at 78% 82%,rgba(0,0,0,.5),transparent 55%)}
+.dLyric{display:flex;flex-direction:column;gap:22px}
+.dLyric div{font-size:44px;line-height:1.35;color:#8b93a3;transition:.3s}
+.dLyric div.cur{font-size:54px;color:#fff;font-weight:600}
+/* display article */
+.dVerse{font-size:30px;line-height:1.75;margin-bottom:18px;color:#e9edf5}
+.dVerse .vn{font-size:18px;color:#7c8698;margin-right:10px;vertical-align:super}
+/* display cast */
+.castStage{position:absolute;inset:0;background:#0b1220;display:flex;align-items:center;justify-content:center;padding:80px}
+.paper{background:#fbfaf6;color:#141414;width:100%;max-width:1400px;height:100%;border-radius:10px;padding:70px 90px;box-shadow:0 30px 80px rgba(0,0,0,.55);overflow:hidden}
+.paper h2{font-size:64px;font-weight:700;margin-bottom:14px}
+.paper .sub{font-size:26px;color:#5b6472;margin-bottom:44px}
+.paper .line{font-size:38px;line-height:1.75;margin-bottom:14px}
+.splitCast{position:absolute;inset:0;display:flex;background:#05070b}
+.splitLeft{width:33.333%;padding:56px 44px;display:flex;flex-direction:column;gap:24px;border-right:1px solid #1b2431;background:linear-gradient(180deg,#0b1220,#05070b)}
+.splitRight{flex:1;position:relative}
+/* system layer */
+.sysBar{position:absolute;left:0;right:0;top:0;z-index:50;display:none;align-items:center;justify-content:center;gap:16px;padding:16px;font-size:26px;backdrop-filter:blur(6px)}
+.sysBar.is-on{display:flex}
+.sysBar.off{background:rgba(120,20,20,.9);color:#fff}
+.sysBar.recon{background:rgba(140,90,10,.92);color:#fff}
+.sysBar.tip{background:rgba(20,40,80,.92);color:#fff}
+.miniBar{position:absolute;left:0;right:0;bottom:0;z-index:20;display:flex;align-items:center;gap:20px;padding:22px 56px;background:linear-gradient(0deg,rgba(0,0,0,.85),rgba(0,0,0,0))}
+.protoNote{position:fixed;left:9px;bottom:7px;z-index:60;font-size:11px;color:#5b6472;pointer-events:none;letter-spacing:.02em}
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:11px;color:var(--muted)}
+.legend b{color:#cfd5e1;font-weight:600}
+</style>
+</head>
+<body>
+<div class="appbar">
+  <div class="brand"><span class="brandMark">CD</span>Class Display System <span class="brandSub">· 页面原型</span></div>
+  <div class="seg" id="topSeg">
+    <button data-tab="console" class="is-on">控制台端</button>
+    <button data-tab="display">显示端（1080p 预览）</button>
+  </div>
+</div>
+
+<main id="appConsole" class="wrapPage">
+
+  <!-- ============ 登录 ============ -->
+  <section class="screen is-active" data-screen="login">
+    <div class="narrow">
+      <div class="authHero">
+        <div class="authLogo">CD</div>
+        <h1 class="authTitle">教师控制台登录</h1>
+        <p class="muted small mt8">登录后可绑定教室大屏、控制音乐与阅读导航、发起板书投屏</p>
+      </div>
+      <div class="card">
+        <label class="field"><span class="lb">账号</span>
+          <input class="input" id="loginUser" value="teacher.zhu" autocomplete="username">
+        </label>
+        <label class="field"><span class="lb">密码</span>
+          <input class="input" id="loginPass" type="password" value="cds2026" autocomplete="current-password">
+        </label>
+        <div class="row between mt12">
+          <span class="tiny muted">登录状态保存 7 天</span>
+          <span class="tiny muted">忘记密码请联系管理员</span>
+        </div>
+        <button class="btn primary block mt16" data-act="login">登录</button>
+        <p class="tiny muted mt12 center">原型演示：账号已预填，直接点「登录」即可。</p>
+      </div>
+      <p class="tiny muted center mt16">Class Display System · 单控模式：一台大屏同一时间只接受一个控制台指令</p>
+    </div>
+  </section>
+
+  <!-- ============ 设备列表 / 绑定 ============ -->
+  <section class="screen" data-screen="devices">
+    <div class="narrow">
+      <div class="row between mt8">
+        <div>
+          <h2 style="font-size:18px;font-weight:600">我的设备</h2>
+          <p class="tiny muted mt8">已绑定 2 台 · 显示中 1 台</p>
+        </div>
+        <div class="row" style="gap:6px">
+          <span class="pill" id="devConnBadge"><span class="dot ok"></span>在线</span>
+          <button class="btn sm ghost" data-act="logout">退出</button>
+        </div>
+      </div>
+
+      <div class="card mt12">
+        <div class="cardTitle"><span class="t">绑定新设备</span><span class="tiny muted">输入大屏上显示的 6 位设备码</span></div>
+        <div class="codeBoxes" id="codeBoxes">
+          <input inputmode="numeric" maxlength="1" aria-label="设备码第1位">
+          <input inputmode="numeric" maxlength="1" aria-label="设备码第2位">
+          <input inputmode="numeric" maxlength="1" aria-label="设备码第3位">
+          <input inputmode="numeric" maxlength="1" aria-label="设备码第4位">
+          <input inputmode="numeric" maxlength="1" aria-label="设备码第5位">
+          <input inputmode="numeric" maxlength="1" aria-label="设备码第6位">
+        </div>
+        <div class="row between mt12">
+          <span class="tiny muted" id="codeHint">设备码 30 秒内有效</span>
+          <button class="btn primary sm" data-act="bind">绑定</button>
+        </div>
+        <div class="hair"></div>
+        <div class="row wrap" style="gap:6px">
+          <span class="tiny muted">演示：</span>
+          <button class="btn sm ghost" data-act="fillCode" data-code="604278">填入被占用设备码</button>
+          <button class="btn sm ghost" data-act="fillCode" data-code="482913">填入已绑定设备码</button>
+        </div>
+      </div>
+
+      <h3 class="mt20" style="font-size:13px;color:#cfd5e1;letter-spacing:.02em">已绑定设备</h3>
+      <div class="stack mt8" id="deviceList"></div>
+
+      <p class="tiny muted center mt16">单控模式：设备被他人控制时不可强制接管，需联系对方解绑</p>
+    </div>
+  </section>
+
+  <!-- ============ 主控台 ============ -->
+  <section class="screen" data-screen="console">
+    <div class="row between wrap mt8" style="gap:8px">
+      <div class="row" style="gap:10px;min-width:0">
+        <button class="btn sm ghost" data-act="toDevices">← 设备</button>
+        <div style="min-width:0">
+          <div class="row" style="gap:8px">
+            <span id="cDevName" style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">三年二班 · 教室大屏</span>
+            <button class="pill" id="connBadge" title="点击切换连接状态（原型演示）"><span class="dot ok"></span><span id="connText">在线</span></button>
+          </div>
+          <div class="tiny muted mt8" id="cDevMeta">设备码 482913 · 上次同步 2 秒前 · 点状态徽标可切换三态演示</div>
+        </div>
+      </div>
+      <div class="row" style="gap:6px">
+        <button class="btn sm" data-act="toPlayer">音乐全屏</button>
+        <button class="btn sm" data-act="toArticle">文章全屏</button>
+      </div>
+    </div>
+
+    <div class="mt12 hide" id="degradeStrip">
+      <div class="strip warn"><span class="dot warn"></span><span>实时通道断开，正在用轮询同步（可能有 2 秒延迟）</span><span class="pill warn" style="margin-left:auto">指令经 REST 下发</span></div>
+    </div>
+    <div class="mt12 hide" id="offlineStrip">
+      <div class="strip danger"><span class="dot danger"></span><span>设备离线，控制按钮已禁用；恢复后以设备上报状态全量对齐</span></div>
+    </div>
+
+    <div class="consoleGrid mt12">
+      <!-- 左：音乐 / 文章 -->
+      <div>
+        <div class="tabs" id="mainTabs">
+          <button data-tabpane="music" class="is-on">音乐</button>
+          <button data-tabpane="article">文章</button>
+        </div>
+
+        <!-- 音乐面板 -->
+        <div class="card mt12" id="panelMusic">
+          <div class="cardTitle"><span class="t">音乐</span><span class="tiny muted">曲库来自本地已同步数据</span></div>
+          <div class="search">
+            <span class="ico"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.6"/><path d="M10.4 10.4 14 14"/></svg></span>
+            <input class="input" id="mSearch" placeholder="按标题或歌词首句检索">
+          </div>
+
+          <div class="nowCard mt12">
+            <div class="cover" id="mCover" style="background:linear-gradient(135deg,#1e3a8a,#0ea5e9)"></div>
+            <div class="grow" style="min-width:0">
+              <div class="row" style="gap:6px">
+                <span class="eq hide" id="mEq"><i></i><i></i><i></i></span>
+                <span id="mNowTitle" style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">未在播放</span>
+              </div>
+              <div class="tiny muted mt8" id="mNowSub">从下方列表选择一首开始播放</div>
+              <div class="sliderWrap mt8">
+                <div class="sliderBadge hide" id="mConfirm"><span class="spinner"></span>确认中</div>
+                <input type="range" id="mSlider" min="0" max="340" value="0" step="1" aria-label="播放进度">
+                <div class="row between tiny muted mono"><span id="mPos">00:00</span><span id="mDur">05:40</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="row mt12" style="gap:8px;justify-content:center">
+            <button class="btn icon ghost" data-act="prev" aria-label="上一首">◀◀</button>
+            <button class="btn icon primary" data-act="toggle" id="mPlay" aria-label="播放">▶</button>
+            <button class="btn icon ghost" data-act="next" aria-label="下一首">▶▶</button>
+            <button class="btn icon ghost" data-act="stop" aria-label="停止">■</button>
+          </div>
+
+          <div class="row mt12" style="gap:10px">
+            <span class="tiny muted nowrap">音量</span>
+            <input type="range" id="mVol" min="0" max="100" value="72" aria-label="音量">
+            <span class="tiny mono muted" id="mVolVal" style="width:26px;text-align:right">72</span>
+          </div>
+          <div class="row mt12" style="gap:6px;align-items:center">
+            <span class="tiny muted nowrap">音轨</span>
+            <button class="btn sm" data-act="track" data-track="main" id="trackMain">主音轨</button>
+            <button class="btn sm" data-act="track" data-track="accomp" id="trackAccomp">伴奏</button>
+            <span class="tiny muted" id="trackHint">当前曲目含伴奏</span>
+          </div>
+
+          <div class="hair"></div>
+          <div class="cardTitle"><span class="t">曲库</span><span class="tiny muted" id="mCount">6 首</span></div>
+          <div id="mList"></div>
+        </div>
+
+        <!-- 文章面板 -->
+        <div class="card mt12 hide" id="panelArticle">
+          <div class="cardTitle">
+            <span class="t">文章阅读导航</span>
+            <span class="pill">人工阅读 · 无播放控制</span>
+          </div>
+          <div id="aBody"></div>
+        </div>
+      </div>
+
+      <!-- 右：投屏 + 设备状态 -->
+      <div class="consoleRight">
+        <div class="card">
+          <div class="cardTitle"><span class="t">投屏</span><span class="pill" id="castChipStrip">投屏与音乐独立</span></div>
+          <div class="row hide" id="castNowChip" style="margin-bottom:10px">
+            <span class="pill brand" id="castNowChipText">♪ 音乐播放中 00:00 / 05:40</span>
+            <button class="btn sm ghost" data-act="pauseFromCast">暂停音乐</button>
+          </div>
+          <div class="castTabs" id="castTabs">
+            <button data-cast="text" class="is-on">文本</button>
+            <button data-cast="image">图片</button>
+            <button data-cast="pdf">PDF</button>
+          </div>
+
+          <div id="castTextWrap">
+            <textarea class="input" id="castText" spellcheck="false">一元二次方程的解法
+1. 因式分解法：把方程化为两个一次因式的积等于 0。
+2. 配方法：两边加上一次项系数一半的平方。
+3. 公式法：x = (-b ± √(b²-4ac)) / 2a，判别式 Δ = b²-4ac。
+4. 例子：x² - 5x + 6 = 0 → (x-2)(x-3) = 0 → x = 2 或 x = 3。</textarea>
+          </div>
+
+          <div id="castImgWrap" class="hide">
+            <div class="thumbs">
+              <div class="thumb is-on" data-img="函数图像" style="background:linear-gradient(135deg,#1e293b,#0f172a)"><span>函数图像.png</span></div>
+              <div class="thumb" data-img="几何辅助线" style="background:linear-gradient(135deg,#164e63,#0b1b22)"><span>几何辅助线.png</span></div>
+              <div class="thumb" data-img="实验步骤" style="background:linear-gradient(135deg,#3b1d5e,#150a22)"><span>实验步骤.png</span></div>
+            </div>
+            <p class="tiny muted mt8">图片先上传对象存储，再以只读预签名地址下发（有效期 ≤10 分钟）</p>
+          </div>
+
+          <div id="castPdfWrap" class="hide">
+            <div class="thumb is-on" style="padding-top:34%;background:linear-gradient(135deg,#22303f,#0b0d12)"><span>一元二次方程-讲义.pdf · 12 页</span></div>
+            <p class="tiny muted mt8">PDF 在显示端用 pdf.js 按页渲染，首屏取第 1 页缩略图</p>
+          </div>
+
+          <div class="preview mt12" id="castPreview">等待选择投屏内容</div>
+
+          <div class="row between mt12">
+            <label class="row tiny muted" style="gap:6px;cursor:pointer">
+              <input type="checkbox" id="castFull" checked> 全屏铺满（关闭则配乐+板书并存）
+            </label>
+            <span class="tiny muted" id="castState">未投屏</span>
+          </div>
+          <div class="row mt12" style="gap:8px">
+            <button class="btn primary grow" data-act="castStart" id="castStart">开始投屏</button>
+            <button class="btn danger" data-act="castEnd" id="castEnd">结束投屏</button>
+          </div>
+          <p class="tiny muted mt8">开始投屏不会暂停音乐；如需暂停请点上面的「暂停音乐」。</p>
+        </div>
+
+        <div class="card mt12">
+          <div class="cardTitle"><span class="t">设备状态</span><span class="tiny muted">来自 state.report</span></div>
+          <div class="statusKv"><span class="k">连接</span><span id="dpConn">在线 · 心跳 2 秒前</span></div>
+          <div class="statusKv"><span class="k">播放</span><span id="dpPlay">未播放</span></div>
+          <div class="statusKv"><span class="k">阅读</span><span id="dpRead">未打开文章</span></div>
+          <div class="statusKv"><span class="k">投屏</span><span id="dpCast">未投屏</span></div>
+          <div class="statusKv"><span class="k">控制者</span><span id="dpCtrl">我</span></div>
+          <div class="statusKv"><span class="k">当前画面</span><span id="dpScene">待机</span></div>
+          <div class="hair"></div>
+          <button class="btn sm ghost block" data-act="toDisplay">在显示端预览当前画面 →</button>
+        </div>
+      </div>
+    </div>
+    <div class="card mt16" style="border-style:dashed;background:transparent">
+      <div class="cardTitle"><span class="t">原型说明 · 评审对照（非产品界面）</span><span class="tiny muted">V0.1</span></div>
+      <div class="small muted" style="line-height:1.9">
+        1. 文章区只有导航、翻屏、字号、检索、书签 —— 没有朗读 / 播放 / 语速 / 音量。<br>
+        2. 投屏不暂停音乐：点「开始投屏」后右侧出现「♪ 音乐播放中」，音乐继续走；关掉「全屏铺满」即配乐 + 板书。<br>
+        3. 控制台不做乐观状态：拖动进度条后显示「确认中」，3 秒未确认回落并提示「跳转未确认，已显示实际进度」。<br>
+        4. 单控冲突：设备列表点「填入被占用设备码」再绑定 → 4091，不提供强制接管。<br>
+        5. 连接三态：点设备名旁的在线徽标 → 轮询中 / 离线，出现黄条 / 红条并禁用控制。<br>
+        6. 全部交互为前端模拟，不连后端；曲库、经文为内置示例数据。
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 音乐全屏 ============ -->
+  <section class="screen" data-screen="player">
+    <div class="narrow">
+      <div class="row between mt8">
+        <button class="btn sm ghost" data-act="backConsole">← 返回主控台</button>
+        <span class="pill"><span class="dot ok"></span>设备在线</span>
+      </div>
+      <div class="card mt12">
+        <div class="cover big" id="pCover" style="background:linear-gradient(135deg,#1e3a8a,#0ea5e9)"></div>
+        <div class="row between mt16" style="align-items:flex-start">
+          <div>
+            <div style="font-size:20px;font-weight:600" id="pTitle">未在播放</div>
+            <div class="tiny muted mt8" id="pSub">选择曲目后开始播放</div>
+          </div>
+          <span class="pill" id="pTrackPill">主音轨</span>
+        </div>
+        <div class="mt16" style="max-height:220px;overflow:hidden;position:relative">
+          <div id="pLyrics" style="display:flex;flex-direction:column;gap:10px;font-size:13px;color:#8b93a3"></div>
+        </div>
+        <div class="sliderWrap mt16">
+          <div class="sliderBadge hide" id="pConfirm"><span class="spinner"></span>确认中</div>
+          <input type="range" id="pSlider" min="0" max="340" value="0" step="1" aria-label="播放进度">
+          <div class="row between tiny muted mono"><span id="pPos">00:00</span><span id="pDur">05:40</span></div>
+        </div>
+        <div class="row mt12" style="gap:8px;justify-content:center">
+          <button class="btn icon ghost" data-act="prev" aria-label="上一首">◀◀</button>
+          <button class="btn icon primary" data-act="toggle" id="pPlay" aria-label="播放">▶</button>
+          <button class="btn icon ghost" data-act="next" aria-label="下一首">▶▶</button>
+        </div>
+        <div class="row mt16" style="gap:10px">
+          <span class="tiny muted nowrap">音量</span>
+          <input type="range" id="pVol" min="0" max="100" value="72">
+          <span class="tiny mono muted" id="pVolVal" style="width:26px;text-align:right">72</span>
+        </div>
+        <div class="hair"></div>
+        <div class="cardTitle"><span class="t">曲库</span><span class="tiny muted">点选即切换</span></div>
+        <div id="pList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 文章全屏 ============ -->
+  <section class="screen" data-screen="article">
+    <div class="narrow">
+      <div class="row between mt8">
+        <button class="btn sm ghost" data-act="backConsole">← 返回主控台</button>
+        <span class="pill">人工阅读 · 无朗读 / 无播放控制</span>
+      </div>
+      <div class="card mt12">
+        <div id="afBody"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ============ 显示端 ============ -->
+<main id="appDisplay" class="wrapPage hide">
+  <div class="dispBar">
+    <div class="seg2" id="sceneSeg">
+      <button data-scene="pair" class="is-on">配对页</button>
+      <button data-scene="idle">待机</button>
+      <button data-scene="music">音乐</button>
+      <button data-scene="article">文章</button>
+      <button data-scene="cast">投屏</button>
+      <button data-scene="split">配乐 + 板书</button>
+    </div>
+    <div class="seg2" id="sysSeg">
+      <button data-sys="" class="is-on">无提示</button>
+      <button data-sys="recon">重连中</button>
+      <button data-sys="off">离线</button>
+      <button data-sys="tip">音频待启用</button>
+    </div>
+  </div>
+
+  <div class="stageWrap" id="stageWrap">
+    <div class="stage" id="stage">
+
+      <!-- 配对 -->
+      <div class="scene is-active" data-sc="pair">
+        <div class="pairBg"></div>
+        <div class="safe" style="align-items:center;justify-content:center;text-align:center">
+          <div style="font-size:26px;color:#9aa3b2;letter-spacing:.24em">CLASS DISPLAY SYSTEM</div>
+          <div style="font-size:56px;font-weight:600;margin-top:26px">请在教师控制台输入设备码</div>
+          <div class="pairCode" style="margin-top:56px">
+            <div>4</div><div>8</div><div>2</div><div>9</div><div>1</div><div>3</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:56px;margin-top:64px">
+            <div class="qr" id="qr"></div>
+            <div style="text-align:left;max-width:520px">
+              <div style="font-size:34px;color:#e6e8ee">三年二班 · 教室大屏</div>
+              <div style="font-size:24px;color:#9aa3b2;margin-top:12px">设备码 30 秒内有效，过期自动更换</div>
+              <div style="font-size:24px;color:#9aa3b2;margin-top:8px">扫码或手动输入均可绑定</div>
+              <button data-pair="start" style="margin-top:36px;min-height:88px;padding:0 56px;border-radius:20px;border:0;background:#2563eb;color:#fff;font-size:34px;font-weight:600">开始使用</button>
+              <div style="font-size:20px;color:#6b7280;margin-top:16px">点击「开始使用」解锁浏览器音频播放权限</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 待机 -->
+      <div class="scene" data-sc="idle">
+        <div class="pairBg" style="background:radial-gradient(1000px 600px at 50% 30%,#0e1626,#050709 70%)"></div>
+        <div class="safe" style="align-items:center;justify-content:center;text-align:center">
+          <div style="font-size:120px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums" id="idleClock">07:42</div>
+          <div style="font-size:40px;color:#9aa3b2;margin-top:20px">三年二班 · 教室大屏</div>
+          <div style="font-size:28px;color:#5b6472;margin-top:16px">设备码 482913 · 等待控制台指令</div>
+        </div>
+      </div>
+
+      <!-- 音乐 -->
+      <div class="scene" data-sc="music">
+        <div style="position:absolute;inset:0;background:radial-gradient(1200px 800px at 16% 20%,#12203a,#05070b 68%)"></div>
+        <div class="safe" style="flex-direction:row;gap:90px;align-items:center">
+          <div class="dMusicCover" style="background:linear-gradient(135deg,#1e3a8a,#0ea5e9)"></div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:30px;color:#5b6472;letter-spacing:.2em">NOW PLAYING</div>
+            <div style="font-size:76px;font-weight:700;margin-top:16px" id="dSongTitle">云上太阳</div>
+            <div style="font-size:28px;color:#9aa3b2;margin-top:12px" id="dSongMeta">主音轨 · 04:12</div>
+            <div class="dLyric" style="margin-top:60px" id="dLyric"></div>
+            <div style="margin-top:70px;height:8px;background:#1b2431;border-radius:99px;overflow:hidden">
+              <div id="dBar" style="height:100%;width:0%;background:#3b82f6"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:24px;color:#9aa3b2;margin-top:14px" class="mono">
+              <span id="dPos">00:00</span><span id="dDur">04:12</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 文章 -->
+      <div class="scene" data-sc="article">
+        <div style="position:absolute;inset:0;background:#05070b"></div>
+        <div class="safe">
+          <div style="font-size:28px;color:#5b6472;letter-spacing:.16em">诗篇 · 第 23 篇</div>
+          <div style="flex:1;margin-top:48px;display:flex;flex-direction:column;justify-content:center" id="dVerses"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:24px;color:#6b7280">
+            <span>人工阅读 · 翻屏由控制台操作</span>
+            <span id="dPage">第 1 屏 / 共 2 屏</span>
+          </div>
+        </div>
+        <div class="miniBar">
+          <span style="font-size:30px">♪</span>
+          <span style="font-size:30px;color:#e6e8ee" id="dMiniTitle">云上太阳</span>
+          <span style="font-size:24px;color:#9aa3b2" id="dMiniPos">01:12 / 04:12</span>
+          <div style="flex:1;height:6px;background:#1b2431;border-radius:99px;overflow:hidden"><div id="dMiniBar" style="height:100%;width:30%;background:#3b82f6"></div></div>
+        </div>
+      </div>
+
+      <!-- 投屏 -->
+      <div class="scene" data-sc="cast">
+        <div class="castStage">
+          <div class="paper" id="dPaper">
+            <h2>一元二次方程的解法</h2>
+            <div class="sub">八年级数学 · 第 3 课时</div>
+            <div class="line">1. 因式分解法：把方程化为两个一次因式的积等于 0。</div>
+            <div class="line">2. 配方法：两边加上一次项系数一半的平方。</div>
+            <div class="line">3. 公式法：x = (-b ± √(b²-4ac)) / 2a</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 配乐 + 板书 -->
+      <div class="scene" data-sc="split">
+        <div class="splitCast">
+          <div class="splitLeft">
+            <div style="width:100%;aspect-ratio:1/1;border-radius:16px;background:linear-gradient(135deg,#1e3a8a,#0ea5e9);position:relative;overflow:hidden"></div>
+            <div style="font-size:34px;font-weight:600" id="dSplitTitle">云上太阳</div>
+            <div style="font-size:22px;color:#9aa3b2" id="dSplitMeta">主音轨 · 04:12</div>
+            <div style="margin-top:8px;height:6px;background:#1b2431;border-radius:99px;overflow:hidden"><div id="dSplitBar" style="height:100%;width:0%;background:#3b82f6"></div></div>
+            <div style="display:flex;justify-content:space-between;font-size:20px;color:#9aa3b2" class="mono"><span id="dSplitPos">00:00</span><span id="dSplitDur">04:12</span></div>
+            <div style="flex:1"></div>
+            <div style="font-size:24px;color:#8b93a3;line-height:1.6">♪ 音乐继续播放，板书中不打断</div>
+          </div>
+          <div class="splitRight">
+            <div class="paper" style="border-radius:0;max-width:none;box-shadow:none">
+              <h2 style="font-size:56px">一元二次方程的解法</h2>
+              <div class="sub" style="font-size:24px">八年级数学 · 第 3 课时</div>
+              <div class="line" style="font-size:34px">1. 因式分解法：化为两个一次因式的积等于 0。</div>
+              <div class="line" style="font-size:34px">2. 配方法：两边加上一次项系数一半的平方。</div>
+              <div class="line" style="font-size:34px">3. 公式法：x = (-b ± √(b²-4ac)) / 2a</div>
+              <div class="line" style="font-size:34px">4. 例：x² - 5x + 6 = 0 → (x-2)(x-3) = 0 → x = 2 或 3</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 系统层 -->
+      <div class="sysBar" id="sysBar"><span id="sysText"></span></div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><b>图层栈</b>：待机 L0 → 内容 L1 → 投屏 L2 → 系统提示 L3</span>
+    <span><b>不变量</b>：cast.* 不触碰 audio；文章切换不停音乐</span>
+    <span><b>安全区</b>：四周 ≥96px（1920×1080）</span>
+    <span><b>基准字号</b>：显示端 18px，经文 28/36，投屏正文 40 起</span>
+  </div>
+</main>
+
+<div id="toasts"></div>
+<div class="protoNote">原型 V0.1 · 2026-11-17 · 仅用于评审，非最终视觉</div>
+<script>
+(function(){
+'use strict';
+var byId = function(id){ return document.getElementById(id); };
+var fmt = function(sec){ sec = Math.max(0, Math.floor(sec||0)); var m = Math.floor(sec/60), s = sec%60; return (m<10?'0':'')+m+':'+(s<10?'0':'')+s; };
+var esc = function(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+
+/* ---------------- 数据 ---------------- */
+var SONGS = [
+  { title:'云上太阳', dur:252, accomp:true, isad:false, c1:'#1e3a8a', c2:'#0ea5e9' },
+  { title:'这一生最美的祝福', dur:340, accomp:true, isad:false, c1:'#3730a3', c2:'#7c3aed' },
+  { title:'活出爱', dur:245, accomp:false, isad:false, c1:'#065f46', c2:'#22d3ee' },
+  { title:'你的恩典够我用', dur:312, accomp:true, isad:true, c1:'#7c2d12', c2:'#f59e0b' },
+  { title:'安静', dur:380, accomp:true, isad:false, c1:'#1f2937', c2:'#64748b' },
+  { title:'恩典之路', dur:288, accomp:false, isad:false, c1:'#4c1d95', c2:'#ec4899' }
+];
+var LYRICS = [
+  { t:0,   s:'（前奏）' },
+  { t:14,  s:'清晨的光落在窗台' },
+  { t:26,  s:'我们把脚步放得很轻' },
+  { t:38,  s:'一首歌穿过安静的走廊' },
+  { t:50,  s:'把心里的重担都放下' },
+  { t:64,  s:'云上太阳 它从不改变' },
+  { t:78,  s:'雨后的天空 也一样明亮' },
+  { t:92,  s:'我们同心 唱同一首歌' },
+  { t:106, s:'让这间教室也有回响' },
+  { t:120, s:'一步一步 走到今天' },
+  { t:134, s:'每一次低头 都是仰望' },
+  { t:150, s:'云上太阳 它从不改变' },
+  { t:166, s:'我们同心 唱同一首歌' }
+];
+
+var VOLUMES = [
+  { id:'gen', name:'创世记', short:'创', testament:'旧约', chapters:50 },
+  { id:'exo', name:'出埃及记', short:'出', testament:'旧约', chapters:40 },
+  { id:'psa', name:'诗篇', short:'诗', testament:'旧约', chapters:150 },
+  { id:'pro', name:'箴言', short:'箴', testament:'旧约', chapters:31 },
+  { id:'isa', name:'以赛亚书', short:'赛', testament:'旧约', chapters:66 },
+  { id:'mat', name:'马太福音', short:'太', testament:'新约', chapters:28 },
+  { id:'mrk', name:'马可福音', short:'可', testament:'新约', chapters:16 },
+  { id:'luk', name:'路加福音', short:'路', testament:'新约', chapters:24 },
+  { id:'jhn', name:'约翰福音', short:'约', testament:'新约', chapters:21 },
+  { id:'rom', name:'罗马书', short:'罗', testament:'新约', chapters:16 },
+  { id:'php', name:'腓立比书', short:'腓', testament:'新约', chapters:4 }
+];
+
+var CHAPTERS = {
+  'gen-1': { start:1, verses:[
+    '起初，神创造天地。',
+    '地是空虚混沌，渊面黑暗；神的灵运行在水面上。',
+    '神说：「要有光」，就有了光。',
+    '神看光是好的，就把光暗分开了。',
+    '神称光为「昼」，称暗为「夜」。有晚上，有早晨，这是头一日。'
+  ]},
+  'psa-1': { start:1, verses:[
+    '不从恶人的计谋，不站罪人的道路，不坐亵慢人的座位，',
+    '惟喜爱耶和华的律法，昼夜思想，这人便为有福！',
+    '他要像一棵树栽在溪水旁，按时候结果子，叶子也不枯干。凡他所做的尽都顺利。',
+    '恶人并不是这样，乃像糠秕被风吹散。',
+    '因此，当审判的时候，恶人必站立不住；罪人在义人的会中也是如此。',
+    '因为耶和华知道义人的道路；恶人的道路却必灭亡。'
+  ]},
+  'psa-23': { start:1, verses:[
+    '耶和华是我的牧者，我必不至缺乏。',
+    '他使我躺卧在青草地上，领我在可安歇的水边。',
+    '他使我的灵魂苏醒，为自己的名引导我走义路。',
+    '我虽然行过死荫的幽谷，也不怕遭害，因为你与我同在；你的杖，你的竿，都安慰我。',
+    '在我敌人面前，你为我摆设筵席；你用油膏了我的头，使我的福杯满溢。',
+    '我一生一世必有恩惠慈爱随着我；我且要住在耶和华的殿中，直到永远。'
+  ]},
+  'psa-100': { start:1, verses:[
+    '普天下当向耶和华欢呼！',
+    '你们当乐意事奉耶和华，当来向他歌唱！',
+    '你们当晓得耶和华是神！我们是他造的，也是属他的；我们是他的民，也是他草场的羊。',
+    '当称谢进入他的门，当赞美进入他的院；当感谢他，称颂他的名！',
+    '因为耶和华本为善，他的慈爱存到永远，他的信实直到万代。'
+  ]},
+  'psa-121': { start:1, verses:[
+    '我要向山举目，我的帮助从何而来？',
+    '我的帮助从造天地的耶和华而来。',
+    '他必不叫你的脚摇动；保护你的必不打盹！',
+    '保护以色列的，也不打盹也不睡觉。',
+    '保护你的是耶和华；耶和华在你右边荫庇你。',
+    '白日，太阳必不伤你；夜间，月亮必不害你。',
+    '耶和华要保护你，免受一切的灾害；他要保护你的性命。',
+    '你出你入，耶和华要保护你，从今时直到永远。'
+  ]},
+  'jhn-3': { start:16, verses:[
+    '「神爱世人，甚至将他的独生子赐给他们，叫一切信他的，不至灭亡，反得永生。',
+    '因为神差他的儿子降世，不是要定世人的罪，乃是要叫世人因他得救。',
+    '信他的人，不被定罪；不信的人，罪已经定了，因为他不信神独生子的名。',
+    '光来到世间，世人因自己的行为是恶的，不爱光，倒爱黑暗，定他们的罪就是在此。',
+    '凡作恶的便恨光，并不来就光，恐怕他的行为受责备。',
+    '但行真理的必来就光，要显明他所行的是靠神而行。」'
+  ]}
+};
+var PER_SCREEN = 4;
+
+var BOOKMARKS = [
+  { vol:'psa', ch:23, v:1, label:'诗篇 23:1', at:'今天 09:12' },
+  { vol:'jhn', ch:3, v:16, label:'约翰福音 3:16', at:'昨天 15:40' },
+  { vol:'psa', ch:121, v:1, label:'诗篇 121:1', at:'11-14 10:05' }
+];
+
+/* ---------------- 状态 ---------------- */
+var state = {
+  conn:'online',
+  screen:'login',
+  device:{ name:'三年二班 · 教室大屏', code:'482913', online:true, controller:'我' },
+  occupiedBy:null,
+  music:{ idx:0, started:false, playing:false, pos:0, vol:72, track:'main', confirming:false, preview:null },
+  article:{ view:'volumes', vol:null, ch:null, page:0, fontScale:1, search:'', hit:null, bmPage:0 },
+  cast:{ type:'text', full:true, casting:false, img:'函数图像', startedAt:0, prevScene:'idle' },
+  display:{ scene:'pair', sys:'' }
+};
+
+/* ---------------- 通用 UI ---------------- */
+function toast(msg, kind){
+  var box = byId('toasts');
+  var el = document.createElement('div');
+  el.className = 'toast' + (kind ? ' ' + kind : '');
+  el.textContent = msg;
+  box.appendChild(el);
+  setTimeout(function(){ el.style.opacity = '0'; el.style.transition = 'opacity .3s'; }, 3200);
+  setTimeout(function(){ if (el.parentNode) el.parentNode.removeChild(el); }, 3600);
+}
+
+function setScreen(name){
+  state.screen = name;
+  var list = document.querySelectorAll('#appConsole .screen');
+  for (var i=0;i<list.length;i++) list[i].classList.toggle('is-active', list[i].getAttribute('data-screen') === name);
+  window.scrollTo({ top:0, behavior:'smooth' });
+  renderAll();
+}
+
+/* ---------------- 连接状态 ---------------- */
+function renderConn(){
+  var map = { online:{cls:'ok', text:'在线'}, degraded:{cls:'warn', text:'轮询中'}, offline:{cls:'danger', text:'离线'} };
+  var m = map[state.conn];
+  var badge = byId('connBadge');
+  if (badge) badge.innerHTML = '<span class="dot ' + m.cls + '"></span><span id="connText">' + m.text + '</span>';
+  var b2 = byId('devConnBadge');
+  if (b2) b2.innerHTML = '<span class="dot ' + m.cls + '"></span>' + m.text;
+  byId('degradeStrip').classList.toggle('hide', state.conn !== 'degraded');
+  byId('offlineStrip').classList.toggle('hide', state.conn !== 'offline');
+  byId('dpConn').textContent = state.conn === 'online' ? '在线 · 心跳 2 秒前' : (state.conn === 'degraded' ? '轮询中 · 2 秒一次 REST 同步' : '离线 · 30 秒无心跳');
+  byId('castChipStrip').textContent = state.conn === 'online' ? '投屏与音乐独立' : (state.conn === 'degraded' ? 'REST 下发 · 延迟约 2 秒' : '设备离线');
+}
+
+/* ---------------- 设备列表 ---------------- */
+function renderDevices(){
+  var devs = [
+    { code:'482913', name:'三年二班 · 教室大屏', online:true, ctrl:'我（当前）', loc:'教学楼 3F · 302' },
+    { code:'730155', name:'阶梯教室 · 东侧大屏', online:false, ctrl:'无', loc:'综合楼 1F · 阶梯教室' }
+  ];
+  if (state.occupiedBy) devs.push({ code:'604278', name:'音乐教室 · 大屏', online:true, ctrl:state.occupiedBy, loc:'艺术楼 2F · 音乐教室', occupied:true });
+  var html = devs.map(function(d){
+    return '<div class="devCard ' + (d.online?'':'offline') + ' ' + (d.occupied?'occupied':'') + '">' +
+      '<div class="devThumb">▣</div>' +
+      '<div class="grow" style="min-width:0">' +
+        '<div class="row" style="gap:6px"><span class="dot ' + (d.occupied?'danger':(d.online?'ok':'idle')) + '"></span>' +
+          '<span class="devName">' + esc(d.name) + '</span></div>' +
+        '<div class="tiny muted mt8">设备码 ' + d.code + ' · ' + esc(d.loc) + '</div>' +
+        '<div class="row mt8" style="gap:6px;flex-wrap:wrap">' +
+          '<span class="pill ' + (d.online?'ok':'') + '">' + (d.online?'在线':'离线') + '</span>' +
+          '<span class="pill">控制者：' + esc(d.ctrl) + '</span>' +
+          (d.occupied ? '<span class="pill danger">已被占用</span>' : '') +
+        '</div>' +
+      '</div>' +
+      (d.occupied
+        ? '<button class="btn sm" disabled title="单控模式不可强制接管">不能进入</button>'
+        : '<button class="btn sm ' + (d.online?'primary':'') + '" data-open="' + d.code + '">' + (d.online?'进入':'查看') + '</button>') +
+    '</div>';
+  }).join('<div style="height:8px"></div>');
+  byId('deviceList').innerHTML = html;
+}
+
+/* ---------------- 音乐 ---------------- */
+function displayedPos(){
+  var m = state.music;
+  return m.preview !== null ? m.preview : m.pos;
+}
+function currentSong(){ return SONGS[state.music.idx]; }
+
+function renderMusic(){
+  var m = state.music, s = currentSong(), pos = displayedPos();
+  var title = m.started ? s.title : '未在播放';
+  byId('mNowTitle').textContent = title;
+  byId('pTitle').textContent = title;
+  var sub = m.started
+    ? fmt(s.dur) + ' · ' + (s.accomp ? '含伴奏' : '无伴奏') + (s.isad ? ' · 推广曲目' : '')
+    : '从下方列表选择一首开始播放';
+  byId('mNowSub').textContent = sub;
+  byId('pSub').textContent = m.started ? ('设备端播放 · 音量 ' + m.vol) : '选择曲目后开始播放';
+  byId('mCover').style.background = 'linear-gradient(135deg,' + s.c1 + ',' + s.c2 + ')';
+  byId('pCover').style.background = 'linear-gradient(135deg,' + s.c1 + ',' + s.c2 + ')';
+  byId('mEq').classList.toggle('hide', !m.playing);
+  byId('mPlay').textContent = m.playing ? '❚❚' : '▶';
+  byId('pPlay').textContent = m.playing ? '❚❚' : '▶';
+  byId('mPlay').setAttribute('aria-label', m.playing ? '暂停' : '播放');
+  byId('mPos').textContent = fmt(pos);
+  byId('pPos').textContent = fmt(pos);
+  byId('mDur').textContent = fmt(m.started ? s.dur : 0);
+  byId('pDur').textContent = fmt(m.started ? s.dur : 0);
+  ['mSlider','pSlider'].forEach(function(id){
+    var el = byId(id); el.max = String(m.started ? s.dur : 0); el.value = String(Math.min(pos, m.started ? s.dur : 0));
+  });
+  byId('mConfirm').classList.toggle('hide', !m.confirming);
+  byId('pConfirm').classList.toggle('hide', !m.confirming);
+  byId('mVol').value = m.vol; byId('pVol').value = m.vol;
+  byId('mVolVal').textContent = m.vol; byId('pVolVal').textContent = m.vol;
+  byId('trackMain').className = 'btn sm' + (m.track === 'main' ? ' primary' : '');
+  byId('trackAccomp').className = 'btn sm' + (m.track === 'accomp' ? ' primary' : '');
+  byId('trackAccomp').disabled = !s.accomp;
+  byId('trackHint').textContent = s.accomp ? '当前曲目含伴奏，可切换' : '当前曲目无伴奏音轨';
+  byId('pTrackPill').textContent = m.track === 'main' ? '主音轨' : '伴奏音轨';
+
+  var rows = SONGS.map(function(sg, i){
+    var on = (i === m.idx && m.started);
+    var left = (i === m.idx && m.playing)
+      ? '<span class="eq"><i></i><i></i><i></i></span>'
+      : (i+1 < 10 ? '0' : '') + (i+1);
+    return '<div role="button" tabindex="0" class="songRow ' + (on?'is-on':'') + '" data-song="' + i + '">' +
+      '<span class="idx">' + left + '</span>' +
+      '<span class="grow" style="min-width:0">' +
+        '<div class="stitle">' + esc(sg.title) + '</div>' +
+        '<div class="smeta">' + fmt(sg.dur) +
+          (sg.accomp ? '<span class="pill">含伴奏</span>' : '') +
+          (sg.isad ? '<span class="pill warn">推广</span>' : '') +
+        '</div>' +
+      '</span>' +
+      '<span class="tiny muted">' + (on && m.playing ? '播放中' : '') + '</span>' +
+    '</div>';
+  }).join('');
+  byId('mList').innerHTML = rows;
+  byId('pList').innerHTML = rows;
+  byId('mCount').textContent = SONGS.length + ' 首';
+
+  // 歌词（控制台全屏）
+  var cur = -1;
+  for (var i=0;i<LYRICS.length;i++){ if (pos >= LYRICS[i].t) cur = i; }
+  byId('pLyrics').innerHTML = LYRICS.map(function(l, i){
+    var cls = (i === cur) ? 'color:#fff;font-weight:600' : '';
+    return '<div style="' + cls + '">' + esc(l.s) + '</div>';
+  }).join('');
+
+  renderDisplayMusic(cur);
+  renderCastChip();
+  renderStatus();
+}
+
+/* ---------------- 显示端：音乐层 ---------------- */
+function renderDisplayMusic(cur){
+  var m = state.music, s = currentSong(), pos = displayedPos();
+  var da = document.querySelector('[data-sc="music"]');
+  if (!da) return;
+  byId('dSongTitle').textContent = s.title;
+  byId('dSongMeta').textContent = (m.track === 'main' ? '主音轨' : '伴奏') + ' · ' + fmt(s.dur) + ' · 音量 ' + m.vol;
+  if (cur === undefined || cur === null){ cur = 0; for (var i=0;i<LYRICS.length;i++){ if (pos >= LYRICS[i].t) cur = i; } }
+  var lines = [];
+  for (var k=cur-1;k<=cur+2;k++){ if (LYRICS[k]) lines.push({ s:LYRICS[k].s, cur:k===cur }); }
+  byId('dLyric').innerHTML = lines.map(function(l){ return '<div class="' + (l.cur?'cur':'') + '">' + esc(l.s) + '</div>'; }).join('');
+  var pct = m.started ? Math.min(100, pos / s.dur * 100) : 0;
+  byId('dBar').style.width = pct + '%';
+  byId('dPos').textContent = fmt(pos);
+  byId('dDur').textContent = fmt(s.dur);
+  // 文章层 mini 播放条
+  byId('dMiniTitle').textContent = s.title;
+  byId('dMiniPos').textContent = fmt(pos) + ' / ' + fmt(s.dur);
+  byId('dMiniBar').style.width = pct + '%';
+  document.querySelector('[data-sc="article"] .miniBar').style.display = m.playing ? 'flex' : 'none';
+  // 配乐 + 板书
+  byId('dSplitTitle').textContent = s.title;
+  byId('dSplitMeta').textContent = (m.track === 'main' ? '主音轨' : '伴奏') + ' · ' + fmt(s.dur);
+  byId('dSplitBar').style.width = pct + '%';
+  byId('dSplitPos').textContent = fmt(pos);
+  byId('dSplitDur').textContent = fmt(m.started ? s.dur : 0);
+}
+
+/* ---------------- 文章 ---------------- */
+function volById(id){ for (var i=0;i<VOLUMES.length;i++) if (VOLUMES[i].id === id) return VOLUMES[i]; return null; }
+function chapKey(vol, ch){ return vol + '-' + ch; }
+function chapterOf(vol, ch){ return CHAPTERS[chapKey(vol, ch)] || null; }
+
+function volumesHTML(){
+  var a = state.article;
+  function rows(testament){
+    return VOLUMES.filter(function(v){ return v.testament === testament; }).map(function(v){
+      var n = Object.keys(CHAPTERS).filter(function(k){ return k.indexOf(v.id + '-') === 0; }).length;
+      return '<div role="button" tabindex="0" class="volRow ' + (a.vol === v.id ? 'is-on' : '') + '" data-vol="' + v.id + '">' +
+        '<span class="volShort">' + v.short + '</span>' +
+        '<span class="grow">' + esc(v.name) + '</span>' +
+        '<span class="tiny muted">' + n + ' / ' + v.chapters + ' 章</span>' +
+      '</div>';
+    }).join('');
+  }
+  return '<div class="cardTitle"><span class="t">书卷</span><span class="tiny muted">旧约 5 卷 · 新约 6 卷</span></div>' +
+    '<div class="groupLabel">旧约</div><div class="volList">' + rows('旧约') + '</div>' +
+    '<div class="groupLabel">新约</div><div class="volList">' + rows('新约') + '</div>' +
+    '<div class="hair"></div>' +
+    '<div class="groupLabel">最近阅读</div>' +
+    BOOKMARKS.map(function(b){ return '<div role="button" tabindex="0" class="bookmarkRow" data-bookmark="' + b.vol + ':' + b.ch + ':' + b.v + '">' +
+      '<span class="volShort">' + (volById(b.vol)||{short:'?'}).short + '</span>' +
+      '<span class="grow">' + esc(b.label) + '</span><span class="tiny muted">' + b.at + '</span></div>'; }).join('');
+}
+
+function chaptersHTML(){
+  var a = state.article, v = volById(a.vol);
+  if (!v) return volumesHTML();
+  var size = 100, total = Math.ceil(v.chapters / size), page = Math.min(a.bmPage, total-1);
+  var from = page*size + 1, to = Math.min(v.chapters, (page+1)*size);
+  var cells = '';
+  for (var c=from;c<=to;c++){
+    var has = !!chapterOf(v.id, c);
+    cells += '<button class="chBtn ' + (has?'':'void') + ' ' + (a.ch === c ? 'is-on':'') + '" ' +
+      (has ? 'data-ch="' + c + '"' : 'data-chvoid="' + c + '" title="' + (has ? '第 ' + c + ' 章' : '该章尚未同步到本地内容库') + '"') + '>' +
+      c + '<small>' + (has ? (chapterOf(v.id,c).verses.length + ' 节') : '未同步') + '</small></button>';
+  }
+  return '<div class="row between"><button class="btn sm ghost" data-nav="volumes">← 书卷</button>' +
+      '<span class="tiny muted">' + esc(v.name) + ' · 共 ' + v.chapters + ' 章</span></div>' +
+    '<div class="chGrid mt12">' + cells + '</div>' +
+    '<div class="row between mt12"><button class="btn sm" data-nav="chPrev" ' + (page===0?'disabled':'') + '>上一页</button>' +
+      '<span class="tiny muted">第 ' + (page+1) + ' / ' + total + ' 页 · 每页 100 章</span>' +
+      '<button class="btn sm" data-nav="chNext" ' + (page>=total-1?'disabled':'') + '>下一页</button></div>' +
+    '<p class="tiny muted mt8">灰色章为原型未内置内容（本原型内置 6 章），非功能缺失。</p>';
+}
+
+function totalScreens(d){ return Math.max(1, Math.ceil(d.verses.length / PER_SCREEN)); }
+
+function readingHTML(){
+  var a = state.article, v = volById(a.vol), d = chapterOf(a.vol, a.ch);
+  if (!d) return volumesHTML();
+  var total = totalScreens(d), page = Math.min(a.page, total-1);
+  var slice = d.verses.slice(page*PER_SCREEN, page*PER_SCREEN + PER_SCREEN);
+  var startVn = d.start + page*PER_SCREEN;
+  var html = '<div class="row between"><button class="btn sm ghost" data-nav="chapters">← 章</button>' +
+    '<div class="row" style="gap:4px">' +
+      '<button class="btn sm ghost" data-nav="search" aria-label="检索经文">检索</button>' +
+      '<button class="btn sm ghost" data-nav="fontDown" aria-label="缩小字号">A−</button>' +
+      '<span class="tiny muted" style="min-width:38px;text-align:center">' + Math.round(a.fontScale*100) + '%</span>' +
+      '<button class="btn sm ghost" data-nav="fontUp" aria-label="放大字号">A+</button>' +
+    '</div></div>' +
+    '<div class="tiny muted mt8">' + esc(v.name) + ' · 第 ' + a.ch + ' 章 · 第 ' + (page+1) + ' 屏 / 共 ' + total + ' 屏</div>' +
+    '<div class="row mt8" style="gap:6px;flex-wrap:wrap">' +
+      '<button class="btn sm" data-nav="prevScreen" ' + (page===0?'disabled':'') + '>上一屏</button>' +
+      '<button class="btn sm primary" data-nav="nextScreen" ' + (page>=total-1?'disabled':'') + '>下一屏</button>' +
+      '<button class="btn sm ghost" data-nav="bookmark">加入书签</button>' +
+    '</div>' +
+    '<div class="reader mt12" style="font-size:' + (15*a.fontScale).toFixed(1) + 'px">' +
+      slice.map(function(t, i){
+        var vn = startVn + i;
+        return '<div class="verse ' + (a.hit === vn && a.hitKey === a.vol + '-' + a.ch ? 'hit' : '') + '">' +
+          '<span class="vn">' + vn + '</span>' + esc(t) + '</div>';
+      }).join('') +
+    '</div>' +
+    '<p class="tiny muted mt8">人工阅读：本页没有朗读、播放、语速、音量控制，只做翻屏与字号。</p>';
+  return html;
+}
+
+function searchHTML(){
+  return '<div class="row between"><button class="btn sm ghost" data-nav="backReading">← 返回阅读</button>' +
+    '<span class="tiny muted">检索范围：本地已同步 6 章</span></div>' +
+    '<div class="search mt12"><span class="ico"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.6"/><path d="M10.4 10.4 14 14"/></svg></span>' +
+    '<input class="input" id="aSearchInput" placeholder="输入关键词，如「牧者」「光」" value="' + esc(state.article.search) + '"></div>' +
+    '<div id="aResults" class="mt12">' + resultsHTML() + '</div>';
+}
+
+function resultsHTML(){
+  var q = state.article.search.trim();
+  if (!q) return '<p class="tiny muted">输入关键词后显示命中经节。</p>';
+  var out = [];
+  Object.keys(CHAPTERS).forEach(function(k){
+    var d = CHAPTERS[k], parts = k.split('-'), v = volById(parts[0]), ch = parseInt(parts[1], 10);
+    d.verses.forEach(function(t, i){
+      if (t.indexOf(q) >= 0) out.push({ vol:parts[0], volName:v.name, ch:ch, vn:d.start+i, text:t });
+    });
+  });
+  if (!out.length) return '<p class="tiny muted">未找到包含「' + esc(q) + '」的经节。</p>';
+  return '<p class="tiny muted">命中 ' + out.length + ' 节</p>' + out.slice(0, 12).map(function(o){
+    return '<div role="button" tabindex="0" class="bookmarkRow" data-goto="' + o.vol + ':' + o.ch + ':' + o.vn + '">' +
+      '<span class="volShort">' + volById(o.vol).short + '</span>' +
+      '<span class="grow">' + esc(o.volName) + ' ' + o.ch + ':' + o.vn + ' · ' + esc(o.text.slice(0, 26)) + '…</span></div>';
+  }).join('');
+}
+
+function renderArticle(){
+  var a = state.article, html;
+  if (a.view === 'chapters') html = chaptersHTML();
+  else if (a.view === 'reading') html = readingHTML();
+  else if (a.view === 'search') html = searchHTML();
+  else html = volumesHTML();
+  byId('aBody').innerHTML = html;
+  var af = byId('afBody');
+  af.innerHTML = (state.screen === 'article') ? html : '';
+  if (a.view === 'search'){
+    var inp = byId('aSearchInput');
+    if (inp){
+      inp.addEventListener('input', function(){
+        state.article.search = inp.value;
+        byId('aResults').innerHTML = resultsHTML();
+      });
+    }
+  }
+  renderDisplayArticle();
+}
+
+function renderDisplayArticle(){
+  var a = state.article;
+  var vol = a.vol || 'psa', ch = a.ch || 23;
+  var d = chapterOf(vol, ch);
+  if (!d){ vol = 'psa'; ch = 23; d = CHAPTERS['psa-23']; }
+  var v = volById(vol);
+  var total = totalScreens(d), page = Math.min(a.page, total-1);
+  var slice = d.verses.slice(page*PER_SCREEN, page*PER_SCREEN + PER_SCREEN);
+  var sc = document.querySelector('[data-sc="article"]');
+  if (!sc) return;
+  var head = sc.querySelector('.safe > div');
+  head.textContent = v.name + ' · 第 ' + ch + ' 章';
+  var startVn = d.start + page*PER_SCREEN;
+  byId('dVerses').innerHTML = slice.map(function(t, i){
+    return '<div class="dVerse"><span class="vn">' + (startVn+i) + '</span>' + esc(t) + '</div>';
+  }).join('');
+  byId('dPage').textContent = '第 ' + (page+1) + ' 屏 / 共 ' + total + ' 屏';
+}
+
+/* ---------------- 投屏 ---------------- */
+function castLines(){
+  return byId('castText').value.split('\n').filter(function(x){ return x.trim() !== ''; });
+}
+function renderCastPreview(){
+  var c = state.cast, box = byId('castPreview');
+  if (c.type === 'text'){
+    var lines = castLines();
+    box.innerHTML = '<div class="docCard"><b>' + esc(lines[0] || '未填写标题') + '</b><br>' +
+      lines.slice(1).map(function(x){ return esc(x); }).join('<br>') + '</div>';
+  } else if (c.type === 'image'){
+    box.innerHTML = '<div style="width:100%;aspect-ratio:16/9;border-radius:8px;background:linear-gradient(135deg,#1e293b,#0f172a);display:grid;place-items:center;color:#93a3b8;font-size:12px">' +
+      esc(c.img) + '.png · 1920×1080</div>';
+  } else {
+    box.innerHTML = '<div class="docCard" style="background:#f7f6f1"><b>一元二次方程 · 讲义</b><br>第 1 页 / 共 12 页<br>' +
+      '1. 概念回顾 &nbsp; 2. 四种解法 &nbsp; 3. 课堂练习<br>（显示端用 pdf.js 渲染）</div>';
+  }
+  byId('castState').textContent = c.casting ? (c.full ? '投屏中 · 全屏' : '投屏中 · 配乐+板书') : '未投屏';
+  byId('castStart').textContent = c.casting ? '更新投屏' : '开始投屏';
+  byId('castEnd').disabled = !c.casting;
+}
+
+function renderCastChip(){
+  var m = state.music, s = currentSong();
+  var box = byId('castNowChip');
+  if (!state.cast.casting){ box.classList.add('hide'); return; }
+  box.classList.remove('hide');
+  var txt;
+  if (m.playing) txt = '♪ 音乐播放中 ' + fmt(displayedPos()) + ' / ' + fmt(s.dur);
+  else if (m.started) txt = '♪ 音乐已暂停';
+  else txt = '♪ 音乐未播放';
+  byId('castNowChipText').textContent = txt;
+}
+
+function renderCastPaper(){
+  var c = state.cast;
+  if (c.type !== 'text') return;
+  var lines = castLines();
+  var paper = byId('dPaper');
+  paper.innerHTML = '<h2>' + esc(lines[0] || '') + '</h2>' +
+    '<div class="sub">板书投屏 · 由控制台发起</div>' +
+    lines.slice(1).map(function(x){ return '<div class="line">' + esc(x) + '</div>'; }).join('');
+}
+
+/* ---------------- 设备状态卡 ---------------- */
+function renderStatus(){
+  var m = state.music, a = state.article, c = state.cast;
+  byId('dpPlay').textContent = m.started ? (currentSong().title + ' · ' + (m.playing?'播放中':'已暂停')) : '未播放';
+  byId('dpRead').textContent = a.ch ? (volById(a.vol).name + ' ' + a.ch + ' 章 · 第 ' + (a.page+1) + ' 屏') : '未打开文章';
+  byId('dpCast').textContent = c.casting ? (c.full ? '投屏中 · 全屏' : '投屏中 · 配乐+板书') : '未投屏';
+  var names = { pair:'配对页', idle:'待机', music:'音乐', article:'文章', cast:'投屏', split:'配乐 + 板书' };
+  byId('dpScene').textContent = names[state.display.scene] || '待机';
+  renderCastPreview();
+}
+
+/* ---------------- 显示端场景 ---------------- */
+function setScene(name, sysOverride){
+  state.display.scene = name;
+  var list = document.querySelectorAll('.scene');
+  for (var i=0;i<list.length;i++) list[i].classList.toggle('is-active', list[i].getAttribute('data-sc') === name);
+  var seg = byId('sceneSeg');
+  var bs = seg.querySelectorAll('button');
+  for (var j=0;j<bs.length;j++) bs[j].classList.toggle('is-on', bs[j].getAttribute('data-scene') === name);
+  renderStatus();
+}
+
+function setSys(kind){
+  state.display.sys = kind;
+  var bar = byId('sysBar');
+  bar.className = 'sysBar' + (kind ? ' is-on ' + kind : '');
+  var txt = { off:'设备离线 · 正在等待控制台重新连接', recon:'实时通道断开，正在重连（第 2 次）', tip:'点击屏幕任意位置启用音频' };
+  byId('sysText').innerHTML = kind === 'off' ? '<span class="dot danger"></span>&nbsp;' + txt.off
+    : kind === 'recon' ? '<span class="spinner"></span>&nbsp;' + txt.recon
+    : kind === 'tip' ? '🔈&nbsp;' + txt.tip : '';
+  var bs = byId('sysSeg').querySelectorAll('button');
+  for (var i=0;i<bs.length;i++) bs[i].classList.toggle('is-on', bs[i].getAttribute('data-sys') === kind);
+}
+
+function fitStage(){
+  var wrap = byId('stageWrap');
+  if (!wrap) return;
+  var w = wrap.clientWidth, h = wrap.clientHeight;
+  var s = Math.min(w/1920, h/1080);
+  byId('stage').style.transform = 'scale(' + s + ')';
+  byId('stage').style.left = ((w - 1920*s)/2) + 'px';
+  byId('stage').style.top = ((h - 1080*s)/2) + 'px';
+}
+
+function buildQR(){
+  var el = byId('qr');
+  if (!el || el.childNodes.length) return;
+  var N = 21, seed = 482913;
+  function rnd(){ seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+  function finder(cx, cy, x, y){
+    var dx = x-cx, dy = y-cy;
+    if (dx < 0 || dy < 0 || dx > 6 || dy > 6) return null;
+    var edge = (dx===0||dx===6||dy===0||dy===6);
+    var core = (dx>=2&&dx<=4&&dy>=2&&dy<=4);
+    return edge || core;
+  }
+  for (var y=0;y<N;y++){
+    for (var x=0;x<N;x++){
+      var dark = rnd() > 0.5, f;
+      if ((f = finder(0,0,x,y)) !== null) dark = f;
+      else if ((f = finder(14,0,x,y)) !== null) dark = f;
+      else if ((f = finder(0,14,x,y)) !== null) dark = f;
+      else if ((x<8&&y<8)||(x>12&&y<8)||(x<8&&y>12)) dark = false;
+      var i = document.createElement('i');
+      i.style.background = dark ? '#000' : '#fff';
+      el.appendChild(i);
+    }
+  }
+}
+
+/* ---------------- 渲染总入口 ---------------- */
+function renderAll(){
+  renderConn();
+  renderDevices();
+  renderMusic();
+  renderArticle();
+  renderStatus();
+}
+
+/* ---------------- 交互 ---------------- */
+function guard(){
+  if (state.conn === 'offline'){
+    toast('设备离线，指令未下发', 'warn');
+    return false;
+  }
+  return true;
+}
+
+function playSong(i){
+  var m = state.music;
+  m.idx = i; m.started = true; m.playing = true; m.pos = 0; m.preview = null; m.track = 'main';
+  renderMusic();
+  toast('已下发 play · ' + SONGS[i].title);
+}
+
+function togglePlay(){
+  var m = state.music;
+  if (!m.started){ playSong(m.idx); return; }
+  m.playing = !m.playing;
+  if (m.playing) toast('已下发 resume'); else toast('已下发 pause');
+  renderMusic();
+}
+
+function seekTo(sec){
+  var m = state.music;
+  if (!m.started) return;
+  if (state.conn === 'offline'){ toast('设备离线，跳转未下发', 'warn'); return; }
+  m.preview = sec;
+  m.confirming = true;
+  renderMusic();
+  setTimeout(function(){
+    if (!m.confirming) return;
+    m.confirming = false;
+    m.preview = null;   // 未确认 → 回落到设备上报的实际进度
+    toast('跳转未确认，已显示实际进度', 'warn');
+    renderMusic();
+  }, 3000);
+}
+
+function openChapter(vol, ch, vn){
+  var a = state.article;
+  a.vol = vol; a.ch = ch; a.view = 'reading';
+  var d = chapterOf(vol, ch);
+  if (d && vn) a.page = Math.floor((vn - d.start) / PER_SCREEN); else a.page = 0;
+  a.hit = vn || null; a.hitKey = vol + '-' + ch;
+  renderArticle();
+  if (state.display.scene === 'idle' || state.display.scene === 'pair'){
+    setScene('article');
+    toast('已下发 article.navigate · ' + volById(vol).name + ' ' + ch + ' 章');
+  }
+}
+
+document.addEventListener('click', function(e){
+  var t = e.target.closest('[data-pair],[data-act],[data-song],[data-vol],[data-ch],[data-chvoid],[data-nav],[data-open],[data-bookmark],[data-goto],[data-tabpane],[data-cast],[data-img],[data-scene],[data-sys],[data-tab]');
+  if (!t) return;
+  var d = t.dataset;
+
+  if (d.tab){
+    var isConsole = d.tab === 'console';
+    byId('appConsole').classList.toggle('hide', !isConsole);
+    byId('appDisplay').classList.toggle('hide', isConsole);
+    var bs = byId('topSeg').querySelectorAll('button');
+    for (var i=0;i<bs.length;i++) bs[i].classList.toggle('is-on', bs[i].dataset.tab === d.tab);
+    if (!isConsole){ fitStage(); buildQR(); }
+    window.scrollTo({ top:0 });
+    return;
+  }
+
+  if (d.tabpane){
+    var panelMusic = d.tabpane === 'music';
+    byId('panelMusic').classList.toggle('hide', !panelMusic);
+    byId('panelArticle').classList.toggle('hide', panelMusic);
+    var tb = byId('mainTabs').querySelectorAll('button');
+    for (var j=0;j<tb.length;j++) tb[j].classList.toggle('is-on', tb[j].dataset.tabpane === d.tabpane);
+    return;
+  }
+
+  if (d.pair){ toast('已解锁音频播放权限（原型模拟），进入运行态'); setScene('idle'); return; }
+
+  if (d.song !== undefined){ if (!guard()) return; playSong(parseInt(d.song, 10)); return; }
+
+  if (d.vol){
+    state.article.vol = d.vol; state.article.view = 'chapters'; state.article.bmPage = 0; state.article.page = 0;
+    renderArticle(); return;
+  }
+
+  if (d.ch !== undefined){ openChapter(state.article.vol, parseInt(d.ch, 10), null); return; }
+  if (d.chvoid !== undefined){
+    toast('该章经文尚未同步到本地内容库（原型内置 6 章）', 'warn'); return;
+  }
+
+  if (d.nav){
+    var a = state.article, v = volById(a.vol), d2 = chapterOf(a.vol, a.ch);
+    var total = d2 ? totalScreens(d2) : 1;
+    if (d.nav === 'volumes'){ a.view = 'volumes'; }
+    else if (d.nav === 'chapters'){ a.view = 'chapters'; }
+    else if (d.nav === 'chPrev'){ a.bmPage = Math.max(0, a.bmPage-1); }
+    else if (d.nav === 'chNext'){ a.bmPage += 1; }
+    else if (d.nav === 'prevScreen'){ a.page = Math.max(0, a.page-1); }
+    else if (d.nav === 'nextScreen'){
+      if (a.page >= total-1){ toast('已到章末'); return; }
+      a.page += 1;
+      if (state.display.scene === 'article') toast('已下发 article.scroll · 下一屏');
+    }
+    else if (d.nav === 'fontDown'){ a.fontScale = Math.max(0.8, Math.round((a.fontScale-0.1)*10)/10); }
+    else if (d.nav === 'fontUp'){ a.fontScale = Math.min(2, Math.round((a.fontScale+0.1)*10)/10); }
+    else if (d.nav === 'bookmark'){
+      if (d2){ toast('已加入书签 · ' + v.name + ' ' + a.ch + ' 章第 ' + (a.page*PER_SCREEN + 1) + ' 节'); }
+      return;
+    }
+    else if (d.nav === 'search'){ a.view = 'search'; }
+    else if (d.nav === 'backReading'){ a.view = 'reading'; }
+    renderArticle();
+    return;
+  }
+
+  if (d.bookmark){
+    var p = d.bookmark.split(':');
+    openChapter(p[0], parseInt(p[1],10), parseInt(p[2],10));
+    state.article.view = 'reading'; renderArticle(); return;
+  }
+  if (d.goto){
+    var g = d.goto.split(':');
+    openChapter(g[0], parseInt(g[1],10), parseInt(g[2],10));
+    return;
+  }
+
+  if (d.open){
+    if (d.open === '730155'){ toast('该设备离线，无法进入控制台', 'warn'); return; }
+    state.device.code = d.open;
+    setScreen('console');
+    return;
+  }
+
+  if (d.cast){
+    state.cast.type = d.cast;
+    var cb = byId('castTabs').querySelectorAll('button');
+    for (var k=0;k<cb.length;k++) cb[k].classList.toggle('is-on', cb[k].dataset.cast === d.cast);
+    byId('castTextWrap').classList.toggle('hide', d.cast !== 'text');
+    byId('castImgWrap').classList.toggle('hide', d.cast !== 'image');
+    byId('castPdfWrap').classList.toggle('hide', d.cast !== 'pdf');
+    renderCastPreview();
+    return;
+  }
+
+  if (d.img){
+    state.cast.img = d.img;
+    var th = document.querySelectorAll('#castImgWrap .thumb');
+    for (var m=0;m<th.length;m++) th[m].classList.toggle('is-on', th[m].dataset.img === d.img);
+    renderCastPreview();
+    return;
+  }
+
+  if (d.scene){ setScene(d.scene); return; }
+  if (d.sys !== undefined){ setSys(d.sys); return; }
+
+  if (d.act){
+    var act = d.act;
+    if (act === 'login'){ setScreen('devices'); toast('登录成功'); return; }
+    if (act === 'logout'){ setScreen('login'); return; }
+    if (act === 'toDevices'){ setScreen('devices'); return; }
+    if (act === 'toPlayer'){ setScreen('player'); return; }
+    if (act === 'toArticle'){ setScreen('article'); return; }
+    if (act === 'backConsole'){ setScreen('console'); return; }
+    if (act === 'toDisplay'){
+      byId('appConsole').classList.add('hide');
+      byId('appDisplay').classList.remove('hide');
+      var bs2 = byId('topSeg').querySelectorAll('button');
+      for (var n=0;n<bs2.length;n++) bs2[n].classList.toggle('is-on', bs2[n].dataset.tab === 'display');
+      fitStage(); buildQR(); window.scrollTo({top:0});
+      return;
+    }
+    if (act === 'fillCode'){
+      var code = d.code, boxes = byId('codeBoxes').querySelectorAll('input');
+      for (var b=0;b<boxes.length;b++) boxes[b].value = code.charAt(b);
+      byId('codeHint').textContent = '已填入 ' + code;
+      return;
+    }
+    if (act === 'bind'){
+      var boxes2 = byId('codeBoxes').querySelectorAll('input'), val = '';
+      for (var b2=0;b2<boxes2.length;b2++) val += boxes2[b2].value;
+      if (val.length !== 6){ toast('请输入完整的 6 位设备码', 'warn'); return; }
+      if (val === '604278'){
+        state.occupiedBy = '王老师';
+        renderDevices();
+        toast('该设备正被「王老师」控制，不可强制接管（4091）', 'warn');
+        return;
+      }
+      if (val === '482913' || val === '730155'){
+        state.device.code = val;
+        toast('绑定成功 · 设备码 ' + val);
+        setScreen('console');
+        return;
+      }
+      toast('设备码无效或已过期，请使用大屏上的新码（4092）', 'warn');
+      return;
+    }
+    if (act === 'toggle'){ if (!guard()) return; togglePlay(); return; }
+    if (act === 'prev'){
+      if (!guard()) return;
+      var i2 = (state.music.idx - 1 + SONGS.length) % SONGS.length; playSong(i2); return;
+    }
+    if (act === 'next'){
+      if (!guard()) return;
+      var i3 = (state.music.idx + 1) % SONGS.length; playSong(i3); return;
+    }
+    if (act === 'stop'){
+      if (!guard()) return;
+      state.music.playing = false; state.music.started = false; state.music.pos = 0; state.music.preview = null;
+      renderMusic(); toast('已下发 stop · 音乐视图清空'); return;
+    }
+    if (act === 'track'){
+      var tr = d.track;
+      if (!guard()) return;
+      if (tr === 'accomp' && !currentSong().accomp){ toast('该曲目没有伴奏音轨', 'warn'); return; }
+      state.music.track = tr; renderMusic();
+      toast('已下发 track · ' + (tr === 'main' ? '主音轨' : '伴奏')); return;
+    }
+    if (act === 'pauseFromCast'){
+      if (!guard()) return;
+      state.music.playing = false; renderMusic(); toast('已下发 pause · 音乐暂停，投屏继续'); return;
+    }
+    if (act === 'castStart'){
+      if (!guard()) return;
+      state.cast.full = byId('castFull').checked;
+      if (!state.cast.casting){
+        state.cast.prevScene = (state.display.scene === 'cast' || state.display.scene === 'split') ? 'idle' : state.display.scene;
+      }
+      state.cast.casting = true;
+      state.cast.startedAt = Date.now();
+      renderCastPaper();
+      setScene(state.cast.full ? 'cast' : 'split');
+      renderMusic();
+      toast(state.music.playing ? '已开始投屏，音乐继续播放' : '已开始投屏');
+      return;
+    }
+    if (act === 'castEnd'){
+      if (!state.cast.casting){ toast('当前没有进行中的投屏'); return; }
+      state.cast.casting = false;
+      renderMusic();
+      setScene(state.cast.prevScene || 'idle');
+      toast(state.music.playing ? '已结束投屏，音乐继续播放' : '已结束投屏');
+      return;
+    }
+    return;
+  }
+});
+
+/* 时间与进度 */
+setInterval(function(){
+  var m = state.music;
+  if (m.started && m.playing){
+    m.pos += 0.25;
+    if (m.pos >= currentSong().dur){
+      m.pos = currentSong().dur;
+      m.playing = false;
+      if (m.preview === null) toast('本曲已播放结束');
+    }
+  }
+  if (m.started) renderMusic();
+}, 250);
+
+/* 进度条 */
+['mSlider','pSlider'].forEach(function(id){
+  var el = byId(id);
+  el.addEventListener('input', function(){
+    var m = state.music;
+    if (!m.started) return;
+    m.preview = parseFloat(el.value);
+    renderMusic();
+  });
+  el.addEventListener('change', function(){
+    var m = state.music;
+    if (!m.started) return;
+    if (m.confirming) return;
+    seekTo(parseFloat(el.value));
+  });
+});
+
+['mVol','pVol'].forEach(function(id){
+  byId(id).addEventListener('input', function(){
+    state.music.vol = parseInt(byId(id).value, 10);
+    renderMusic();
+  });
+  byId(id).addEventListener('change', function(){ toast('已下发 volume · ' + state.music.vol); });
+});
+
+byId('castText').addEventListener('input', function(){
+  renderCastPreview();
+  if (state.cast.casting) renderCastPaper();
+});
+byId('castFull').addEventListener('change', function(){
+  state.cast.full = byId('castFull').checked;
+  renderCastPreview();
+  if (state.cast.casting) setScene(state.cast.full ? 'cast' : 'split');
+});
+
+byId('connBadge').addEventListener('click', function(){
+  var order = ['online','degraded','offline'];
+  state.conn = order[(order.indexOf(state.conn) + 1) % 3];
+  renderConn();
+  toast('连接状态：' + ({online:'在线',degraded:'轮询中（MQTT 断开）',offline:'离线'})[state.conn]);
+});
+
+/* 设备码输入：自动跳格 + 粘贴 */
+(function(){
+  var boxes = byId('codeBoxes').querySelectorAll('input');
+  for (var i=0;i<boxes.length;i++){
+    (function(idx){
+      boxes[idx].addEventListener('input', function(){
+        this.value = this.value.replace(/\D/g, '').slice(-1);
+        if (this.value && idx < boxes.length-1) boxes[idx+1].focus();
+      });
+      boxes[idx].addEventListener('keydown', function(ev){
+        if (ev.key === 'Backspace' && !this.value && idx > 0) boxes[idx-1].focus();
+      });
+      boxes[idx].addEventListener('paste', function(ev){
+        var txt = (ev.clipboardData || window.clipboardData).getData('text').replace(/\D/g,'').slice(0,6);
+        if (!txt) return;
+        ev.preventDefault();
+        for (var k=0;k<boxes.length;k++) boxes[k].value = txt.charAt(k) || '';
+        boxes[Math.min(txt.length, 5)].focus();
+      });
+    })(i);
+  }
+})();
+
+/* 键盘激活 role=button */
+document.addEventListener('keydown', function(e){
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  var el = e.target.closest && e.target.closest('[role="button"]');
+  if (!el) return;
+  e.preventDefault(); el.click();
+});
+
+/* 快捷键 */
+document.addEventListener('keydown', function(e){
+  var tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea') return;
+  if (e.key === ' ' && state.screen === 'console'){ e.preventDefault(); if (guard()) togglePlay(); }
+  if (e.key === 'ArrowRight' && state.screen === 'article'){ var b = document.querySelector('[data-nav="nextScreen"]'); if (b && !b.disabled) b.click(); }
+  if (e.key === 'ArrowLeft' && state.screen === 'article'){ var b2 = document.querySelector('[data-nav="prevScreen"]'); if (b2 && !b2.disabled) b2.click(); }
+});
+
+/* 初始化 */
+byId('codeHint').textContent = '设备码 30 秒内有效';
+renderAll();
+renderCastPaper();
+setScene('pair');
+buildQR();
+fitStage();
+window.addEventListener('resize', function(){ fitStage(); });
+
+/* 待机时钟 */
+function clock(){
+  var d = new Date();
+  var hh = d.getHours(), mm = d.getMinutes();
+  var el = byId('idleClock');
+  if (el) el.textContent = (hh<10?'0':'') + hh + ':' + (mm<10?'0':'') + mm;
+}
+clock(); setInterval(clock, 10000);
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,976 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CDS 控制台原型 V2.1（一屏 · 四场景）</title>
+<style>
+:root{
+  --surface:#0f1115; --raised:#171a21; --border:#262b36; --text:#e6e8ee; --muted:#9aa3b2;
+  --brand:#2563eb; --ok:#16a34a; --warn:#d97706; --danger:#dc2626;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--surface);color:var(--text);font:14px/1.5 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+button{font:inherit;color:inherit;background:var(--raised);border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;min-height:34px}
+button:hover{border-color:#3a4252}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:var(--brand);border-color:var(--brand)}
+button.ghost{background:transparent}
+input,select{font:inherit;color:inherit;background:#0b0d11;border:1px solid var(--border);border-radius:8px;padding:6px 10px;min-height:34px}
+h1,h2,h3{margin:0;font-weight:600}
+.app{display:flex;flex-direction:column;height:100vh}
+
+/* ── 顶栏 ── */
+.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid var(--border);background:#0c0e12}
+.brand{font-weight:700;letter-spacing:.5px}
+.brand small{color:var(--muted);font-weight:500;margin-left:6px}
+.count{display:flex;align-items:center;gap:8px;white-space:nowrap;padding:5px 12px;border:1px solid var(--border);border-radius:999px;color:var(--muted);cursor:default}
+.count .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.count.zero .dot{background:var(--warn)}
+.count.zero{color:#f0b060;border-color:#4a3718}
+.code{display:flex;align-items:center;gap:10px;margin-left:auto;white-space:nowrap;padding:5px 12px;border:1px solid var(--border);border-radius:10px;background:#0b0d11}
+.code .label{color:var(--muted);font-size:12px}
+.code .meta{font-size:11px;color:var(--muted);padding:2px 7px;border:1px solid var(--border);border-radius:999px}
+.code .meta.warn{color:#f0b060;border-color:#4a3718}
+.code .meta.used{color:#8fb3ff;border-color:#243a63}
+.code .meta.bad{color:#ff9d9d;border-color:#5a2222}
+.code b{font:600 20px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:3px}
+.code button{min-height:28px;padding:2px 8px}
+.cfsize{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:4px 8px}
+.cfsize button{min-height:22px;padding:0 7px;font-size:12px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text);cursor:pointer}
+.cfsize .ro{font-size:11px;opacity:.7}
+.conn{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;white-space:nowrap}
+.conn .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+
+/* ── 场景 Tab ── */
+.tabs{display:flex;align-items:center;gap:8px;padding:10px 20px;border-bottom:1px solid var(--border)}
+.tabs .seg{display:flex;gap:4px;padding:4px;background:#0b0d11;border:1px solid var(--border);border-radius:12px}
+.tabs .seg button{border:none;background:transparent;min-height:36px;padding:7px 22px;border-radius:9px;color:var(--muted)}
+.tabs .seg button[aria-selected="true"]{background:var(--brand);color:#fff}
+.tabs .hint{margin-left:auto;color:var(--muted);font-size:12px}
+
+/* ── 主体 ── */
+.main{flex:1;display:grid;grid-template-columns:340px minmax(0,1fr);gap:16px;padding:16px 20px;min-height:0;overflow:hidden}
+@media (max-width:900px){.main{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) minmax(0,1fr);overflow:auto}.lists{max-height:42vh}}
+/* V2.1.9（P1）：控制端可以是手机。面积小 + 手指粗 → 44px 目标、单列、行距/字号常驻、发送靠按钮不靠手势 */
+@media (pointer:coarse),(max-width:900px){
+  button,.add,ol.items li{min-height:44px}
+  .main{grid-template-columns:1fr;grid-template-rows:auto auto;overflow:auto}
+  .main .card.now{order:-1;overflow:visible}   /* V2.1.9：当前场景先出，别让老师滚过预选才够得着「发送」 */
+  .lists{max-height:none}
+  .castbox{height:auto}
+  /* 发送条吸在视口底部：一行行写板书时按钮始终在拇指下，不用来回滚 */
+  .castbar{position:sticky;bottom:0;z-index:6;margin-top:10px;padding:8px;border:1px solid var(--border);border-radius:12px;background:#0f131a;flex-wrap:nowrap}
+  .castbar>span{display:none}          /* 手机上不塞长提示：按钮本身就是说明，省一行高度 */
+  .castbar .ghost{padding:0 12px}
+  nav.tabs{flex-wrap:wrap}
+  .stage{min-height:50vh}
+  #castText{min-height:30vh;font-size:17px;line-height:1.7}
+  .castbar{gap:10px}
+  .castbar .primary{flex:1 1 auto;min-height:52px;font-size:16px;margin-left:auto}
+}
+.readbar{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:10px 12px;margin:0 0 10px;border:1px solid var(--border);border-radius:10px;background:#0f131a}
+.readbar label{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
+.readbar input[type=range]{width:160px;height:24px}
+.readbar .rv{color:var(--text);font-variant-numeric:tabular-nums;min-width:4.4em;display:inline-block}
+.readbar .todo{font-size:12px;color:var(--muted)}
+.card{background:var(--raised);border:1px solid var(--border);border-radius:14px;padding:14px;min-height:0;overflow:hidden}
+.panel{display:flex;flex-direction:column;min-height:0}
+.panel h3{font-size:13px;color:var(--muted);text-transform:none;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
+.panel h3 .tag{font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:1px 7px;font-weight:400}
+.lists{overflow:auto;flex:1;margin:10px -6px 0;padding:0 6px}
+.group{margin-bottom:14px}
+.group .gh{font-size:12px;color:var(--muted);display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+ol.items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+ol.items li{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:#12151c;cursor:pointer}
+ol.items li:hover{border-color:#3a4252}
+ol.items li.active{border-color:var(--brand);background:#14203a}
+ol.items li .idx{width:18px;color:var(--muted);font:600 12px ui-monospace,monospace}
+ol.items li .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ol.items li .m{font-size:11px;color:var(--muted)}
+ol.items li .mv{opacity:0;display:flex;gap:2px}
+ol.items li:hover .mv{opacity:1}
+ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:transparent;border-color:var(--border)}
+.add{width:100%;margin-top:2px;border-style:dashed;color:var(--muted)}
+.empty{color:var(--muted);font-size:13px;padding:14px 4px}
+
+/* ── 当前内容 ── */
+.now{flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto}
+.now .stage{flex:1;display:flex;align-items:center;justify-content:center;min-height:0}
+/* V2.1.5：控制台也不再画封面（显示端已去掉，控制台留着会让人以为显示端还有） */
+.musictitle{text-align:center;margin-top:14px;font-size:18px}
+.musicsub{text-align:center;color:var(--muted);font-size:12px;margin-top:4px}
+.bar{display:flex;align-items:center;gap:10px;margin-top:14px;color:var(--muted);font:12px ui-monospace,monospace}
+.track{flex:1;height:6px;border-radius:999px;background:#2a3140;position:relative;cursor:pointer}
+.track .fill{position:absolute;inset:0 auto 0 0;width:0;background:var(--brand);border-radius:999px}
+.track .knob{position:absolute;top:-4px;width:14px;height:14px;border-radius:50%;background:#fff;transform:translateX(-7px)}
+.ctrl{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:12px}
+.ctrl button{min-width:42px}
+.ctrl .play{min-width:58px;background:var(--brand);border-color:var(--brand)}
+.extra{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:12px;color:var(--muted);font-size:12px}
+.extra input[type=range]{width:120px}
+.article{max-width:760px;margin:0 auto;width:100%}
+.article .head{display:flex;align-items:baseline;gap:10px;color:var(--muted);font-size:12px;margin-bottom:10px}
+.article .head b{color:var(--text);font-size:15px}
+.verses{font-size:calc(17px * var(--console-font,1));line-height:1.9;color:#dde3ec}
+.verses p{margin:0 0 8px}
+.verses .sn{color:var(--muted);font-size:12px;margin-right:6px}
+/* V2.1.5：板书满高——原来的 max-width:720px + min-height:180px 就是屏幕上下一大片空白的来源 */
+.castbox{width:100%;max-width:none;margin:0;flex:1;display:flex;flex-direction:column;min-height:0;height:100%}
+.stage-cast{align-items:stretch;min-height:0}
+.casthead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-bottom:8px}
+.casthead b{color:var(--text);font-size:15px}
+.casthead select{font-size:12px;padding:2px 6px;background:#0b0d11;color:var(--text);border:1px solid var(--border);border-radius:8px}
+/* 不再用 min-height:70vh：768px 高的笔记本上会把「投出」按钮挤出屏幕。改为占满剩余高度（约 80%） */
+.castbox textarea{width:100%;flex:1 1 auto;min-height:180px;resize:none;font:16px/1.8 system-ui;background:#0b0d11;color:var(--text);border:1px solid var(--border);border-radius:12px;padding:14px}
+.toast.undo{display:flex;gap:10px;align-items:center}
+.toast.undo button{min-height:24px;padding:0 8px;font-size:12px;background:#2a3a5c;border-color:#3d5280;color:#dbe6ff}
+.castbar{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
+.idle{text-align:center;color:var(--muted)}
+.idle b{display:block;color:var(--text);font-size:17px;margin-bottom:8px}
+
+/* ── 样式栏 ── */
+.stylebar{border-top:1px solid var(--border);background:#0c0e12;padding:0 20px;flex:0 0 auto;max-height:38vh;overflow:auto}
+.stylebar summary{cursor:pointer;padding:11px 0;font-size:13px;color:var(--muted);list-style:none;display:flex;align-items:center;gap:8px}
+.stylebar summary::-webkit-details-marker{display:none}
+.stylebar summary:before{content:"▸";transition:transform .15s}
+.stylebar[open] summary:before{transform:rotate(90deg)}
+.srow{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;padding:0 0 14px}
+.field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.field input[type=color]{padding:0;width:44px;height:34px;background:none;border:1px solid var(--border)}
+.field input[type=range]{width:130px}
+.hintline{color:var(--muted);font-size:12px;margin-left:auto}
+
+/* ── toast ── */
+#toasts{position:fixed;left:50%;top:62px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:8px;z-index:99}
+.toast{background:#1c2331;border:1px solid #33405a;border-radius:10px;padding:9px 14px;font-size:13px;box-shadow:0 8px 24px #0008;animation:in .15s ease}
+.toast.err{border-color:#7f2a2a;background:#2a1717}
+@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.ro{color:var(--muted)}
+  /* V2.1.26：已接管屏幕面板（B3 反转：可点开、可单台移出） */
+  .devPanel{position:fixed;right:16px;top:58px;z-index:60;width:min(560px,92vw);background:#151a23;
+    border:1px solid #3a4356;border-radius:10px;padding:10px 12px;box-shadow:0 12px 32px rgba(0,0,0,.5);font-size:12px}
+  .devPanel[hidden]{display:none}
+  .devHead{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .devHead b{color:#dde3ec}
+  .devRow{display:flex;align-items:center;gap:8px;padding:6px 4px;border-top:1px solid #232a35}
+  .devRow .dot{width:8px;height:8px;border-radius:50%;background:#4ade80;flex:none}
+  .devRow .dot.off{background:#6b7280}
+  .devName{color:#dde3ec}
+  .devId,.devScene{color:#8b97a8;font-family:ui-monospace,monospace}
+  .devKick{margin-left:auto;background:transparent;border:1px solid #7a3b3b;color:#ffb4b4;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:12px}
+  .devEmpty{color:#8b97a8;padding:8px 4px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">CDS<small>教室显示 · 控制台</small></div>
+    <div class="count zero" id="count" role="button" tabindex="0" title="点击查看已接管的屏幕（可单台移出）"><span class="dot"></span><span id="countText">当前 0 个终端在线</span></div>
+    <div id="np" style="display:none;align-items:center;gap:8px;padding:4px 10px;border:1px solid #3a4356;border-radius:8px;font-size:12px;color:#cfd8e6"><span style="color:#8ab4f8">♪</span><span id="npTxt">—</span><button id="npResume" style="font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid #3a4356;background:transparent;color:#cfd8e6;cursor:pointer">继续</button><button id="npStop" style="font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid #3a4356;background:transparent;color:#cfd8e6;cursor:pointer">停止</button></div>
+    <div class="code">
+      <span class="label">控制码</span><b id="codeText">4829 1370</b><span class="meta" id="codeMeta">长期有效 · 可手动更新</span>
+      <button id="refreshCode" title="更新控制码＝重置接管：旧码失效，已接管的屏幕全部回输码页">⟳</button>
+      <button id="unbindAll" class="ghost" title="全部解绑：所有终端回到输码页" style="font-size:12px">全部解绑</button>
+    </div>
+    <a class="ghost" href="screen.html" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);font-size:12px" title="显控一体：这台电脑 + HDMI 复制到投影">🖥 单屏模式</a>
+    <div class="cfsize" title="只改这台控制机的文字大小，不影响教室屏幕（V2.1.5）">
+      <span>控制页</span>
+      <button type="button" id="cfMinus">−</button>
+      <span id="cfVal">100%</span>
+      <button type="button" id="cfPlus">＋</button>
+      <span class="ro">仅本机</span>
+    </div>
+    <div class="conn"><span class="dot"></span>已连接</div>
+  </header>
+
+  <div class="devPanel" id="devPanel" hidden>
+    <div class="devHead"><b>已接管的屏幕</b><span class="ro">「移出接管」只撤这一台，不封禁、可立即用同一张码重接</span>
+      <button id="devClose" class="ghost" style="margin-left:auto;font-size:12px">收起</button></div>
+    <div id="devRows"></div>
+  </div>
+
+  <nav class="tabs">
+    <div class="seg" role="tablist">
+      <button role="tab" data-scene="standby" aria-selected="false">待机</button>
+      <button role="tab" data-scene="music" aria-selected="false">音乐</button>
+      <button role="tab" data-scene="article" aria-selected="false">文章</button>
+      <button role="tab" data-scene="cast" aria-selected="false">板书</button>
+    </div>
+    <span class="hint">四场景互斥 · 待机为默认 · 切换不刷新 · 切回状态保留 · 文章/板书期间不播放音乐 · 字号按 px · 行距可调 · 行数由显示端实测（V2.1.9）</span>
+  </nav>
+
+  <main class="main">
+    <section class="card panel">
+      <h3>今日预选 <span class="tag">有序 · 点条目即用</span></h3>
+      <div class="lists">
+        <div class="group">
+          <div class="gh"><span>音乐</span><span id="mCount"></span></div>
+          <ol class="items" id="musicList"></ol>
+          <button class="add" data-add="music">＋ 添加曲目（此处才出现搜索）</button>
+        </div>
+        <div class="group">
+          <div class="gh"><span>文章</span><span id="aCount"></span></div>
+          <ol class="items" id="articleList"></ol>
+          <button class="add" data-add="article">＋ 添加经文</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card now" id="now"></section>
+  </main>
+
+  <details class="stylebar" id="styleDetails">
+    <summary>显示样式：<span id="styleSummary">宋体 · 1.15 · 行高 1.75</span>（下发即生效，不刷新）</summary>
+    <div class="srow">
+      <label class="field">正文字体
+        <select id="sFont">
+          <option value="song">宋体（经文）</option>
+          <option value="hei">黑体</option>
+          <option value="kai">楷体</option>
+          <option value="system-ui">系统默认</option>
+        </select>
+      </label>
+      <label class="field">显示端字号 <span id="sFontVal">72 px</span>
+        <input type="range" id="sFontSize" min="24" max="160" step="4" value="72">
+        <span class="hintline" id="sFontEst">—（等显示端回报）</span>
+      </label>
+
+      <label class="field">行高 <span id="sLhVal">1.75</span>
+        <input type="range" id="sLh" min="1.2" max="2.2" step="0.05" value="1.75">
+      </label>
+      <label class="field">对齐
+        <select id="sAlign"><option value="left">左对齐</option><option value="center">居中</option></select>
+      </label>
+      <label class="field">正文色<input type="color" id="sFg" value="#dddddd"></label>
+      <label class="field">背景色<input type="color" id="sBg" value="#000000"></label>
+      <button class="primary" id="pushStyle">下发样式</button>
+      <span class="hintline" id="styleState">未下发</span>
+    </div>
+  </details>
+</div>
+<div id="toasts"></div>
+
+<script>
+(function(){
+  'use strict';
+  var LS = window.localStorage, BC = ('BroadcastChannel' in window) ? new BroadcastChannel('cds-proto') : null;
+  var $ = function(id){ return document.getElementById(id); };
+  function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function fmt(ms){ var s=Math.max(0,Math.floor(ms/1000)); return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
+  function toast(msg, isErr){
+    var box=$('toasts');
+    var d=document.createElement('div'); d.className='toast'+(isErr?' err':''); d.textContent=msg;
+    box.appendChild(d);
+    while(box.children.length>3) box.firstChild.remove();
+    setTimeout(function(){ d.remove(); }, 4000);
+  }
+
+  // ── 状态 ──
+  var S = {
+    codeObj: { code:'48291370' },   // CO-2026-11-18-05：每用户一张、存库、长期有效（无 TTL / 无 used）
+    devices: [],                    // 已接管屏幕（真机来自登记表 + presence；原型用 localStorage）
+    scene: 'standby',
+    standby: { mode:'theme' },
+    termOnline: 0,
+    music: { idx: 0, playing: false, pos: 0, items: [
+      { t:'我心灵得安宁', m:'4:05', dur:245000, track:'main' },
+      { t:'奇异恩典', m:'3:42', dur:222000, track:'accompaniment' },
+      { t:'靠近主', m:'5:10', dur:310000, track:'main' }
+    ]},
+    art: { report: null, eff: null, anchor: null },   // eff＝显示端回报的生效三值                                  // V2.1.6：显示端 pageMap 摘要回执
+    article: { idx: 0, page: 0, unit: 'page', cast: false, items: [
+      { t:'诗篇 23 章', v:'诗篇', ch:23 },
+      { t:'约伯记 3 章', v:'约伯记', ch:3 }
+    ]},
+    cast: { text:'', draft:'', active:false, lines:5, castId:'' },   // text=已上屏内容，draft=编辑中草稿（V2.1.5 分离）
+    // V2.1.11：字号/每行字数默认 auto（由显示端按屏高/屏宽派生），拖过滑块才锁定
+    style: { fontFamily:{ui:'system-ui',body:'song'}, fontSizePx:'auto', lineHeight:1.75, charsPerLine:'auto', fg:'#dde3ec', bg:'#000000', align:'left' }
+  };
+  try{
+    var saved = JSON.parse(LS.getItem('cds.consoleState')||'null');
+    if(saved){ S.music.items = saved.music; S.article.items = saved.article; }
+    var st = JSON.parse(LS.getItem('cds.style')||'null'); if(st) S.style = st;
+    if(!S.style.fontSizePx) S.style.fontSizePx='auto';      // V2.1.11：缺省即 auto
+    if(!S.style.charsPerLine) S.style.charsPerLine='auto';
+    S.cast.draft = LS.getItem('cds.castDraft') || '';
+    var cl = LS.getItem('cds.castLines'); if(cl) S.cast.lines = (cl==='all' ? 'all' : +cl);
+    var cc = LS.getItem('cds.castId'); if(cc) S.cast.castId = cc;
+    var c0 = LS.getItem('cds.consoleCode');
+    S.codeObj = { code: (c0 && /^\d{8}$/.test(c0)) ? c0 : newCode() };
+    try{ S.devices = JSON.parse(LS.getItem('cds.devices')||'[]') || []; }catch(e){ S.devices = []; }
+  }catch(e){}
+  function saveLists(){ LS.setItem('cds.consoleState', JSON.stringify({music:S.music.items, article:S.article.items})); }
+
+  // V2.1.5：控制页字号（仅本机）——与 display.style.fontSizePx 完全独立，不进下发 payload
+  S.cf = Math.max(0.6, Math.min(2, +(LS.getItem('consoleFontScale')||1)));
+  function applyCF(){
+    document.documentElement.style.setProperty('--console-font', S.cf);
+    var el=$('cfVal'); if(el) el.textContent=Math.round(S.cf*100)+'%';
+  }
+  function bumpCF(d){
+    S.cf = Math.max(0.6, Math.min(2, Math.round((S.cf+d)*100)/100));
+    LS.setItem('consoleFontScale', S.cf);
+    applyCF();
+  }
+
+  // ── V2.1.5 板书：双击发送「光标所在行及上方 N 行」 ──
+  function castRange(text, caret, n){
+    var lines=text.split('\n'), upto=0, li=0;
+    for(; li<lines.length; li++){ upto += lines[li].length+1; if(caret<upto) break; }
+    if(li>=lines.length) li=lines.length-1;
+    var start = (n==='all') ? 0 : Math.max(0, li-n+1);
+    var seg = lines.slice(start, li+1);
+    while(seg.length && !seg[seg.length-1].trim()) seg.pop();   // 尾部空行 trim
+    return { start:start, text:seg.join('\n') };
+  }
+  function toastUndo(msg, fn){
+    var box=$('toasts');
+    var d=document.createElement('div'); d.className='toast undo';
+    var sp=document.createElement('span'); sp.textContent=msg; d.appendChild(sp);
+    var b=document.createElement('button'); b.textContent='撤销';
+    b.onclick=function(){ d.remove(); fn(); };
+    d.appendChild(b); box.appendChild(d);
+    while(box.children.length>3) box.firstChild.remove();
+    setTimeout(function(){ if(d.parentNode) d.remove(); }, 3000);   // 3 秒撤销窗口
+  }
+  function sendCast(){
+    var ta=$('castText'); if(!ta) return;
+    S.cast.draft = ta.value;                       // 草稿保留，发送只取行范围
+    var r=castRange(ta.value, ta.selectionStart, S.cast.lines||5);
+    if(!r.text.trim()){ toast('光标这一行是空的，没有内容可发送', true); return; }
+    if(S.music.playing){                       // 编排 pause-first（V2.1.2 不变量：看内容不得有声）
+      S.music.playing=false;
+      send({kind:'music', playing:false, pos:S.music.pos, idx:S.music.idx});
+      renderNP();
+    }
+    var prev=S.cast.text, prevActive=S.cast.active;
+    if(!S.cast.castId){ S.cast.castId='c'+Date.now().toString(36); LS.setItem('cds.castId', S.cast.castId); }
+    S.cast.text=r.text; S.cast.active=true; S.scene='cast';
+    send({kind:'cast', active:true, text:r.text, castId:S.cast.castId, scene:'cast'});
+    render();
+    var n=r.text.split('\n').length;
+    toastUndo('已发送第 '+(r.start+1)+'–'+(r.start+n)+' 行', function(){
+      S.cast.text=prev; S.cast.active=prevActive; if(!prevActive) S.scene='standby';
+      send({kind:'cast', active:prevActive, text:prev, castId:S.cast.castId, scene:(prevActive?'cast':'standby')});
+      render(); toast('已撤销发送');
+    });
+  }
+  function bindCast(){
+    var ta=$('castText');
+    if(ta && !isCoarse()){
+      ta.addEventListener('dblclick', function(e){
+        e.preventDefault();
+        // preventDefault 不会阻止双击选词，额外把选区收成光标，避免发送瞬间整词高亮
+        try{ this.selectionStart=this.selectionEnd=this.selectionStart; }catch(err){}
+        sendCast();
+      });
+    }
+    var sel=$('castLines');
+    if(sel){ sel.addEventListener('change', function(){
+      S.cast.lines = (this.value==='all') ? 'all' : +this.value;
+      LS.setItem('cds.castLines', String(S.cast.lines));
+    }); }
+  }
+
+  function send(msg){ if(BC) BC.postMessage(msg); }
+  // CO-2026-11-18-05（Jeremyzh 20:11 定案）：控制码**不再是一次性票据**——每用户一张、存库、长期有效。
+  // 整层删掉：15 分钟 TTL、倒计时/≤2 分钟转橙、绑定即「已使用」、到期自动换码、绑定后自动续码。
+  // 剩下的语义只有两条：① ⟳ 更新码＝撤销该用户全部绑定；② 单台「移出接管」＝撤销那一条。
+  var SCENE_NAME = { standby:'待机', music:'音乐', article:'文章', cast:'板书' };
+  function saveCode(){
+    LS.setItem('cds.codeObj', JSON.stringify(S.codeObj));
+    LS.setItem('cds.consoleCode', S.codeObj.code);
+  }
+  function setCode(c){ S.codeObj = { code:c }; saveCode(); renderCode(); }
+  function newCode(){ return String(Math.floor(10000000+Math.random()*90000000)); }
+  function renderCode(){
+    var o = S.codeObj, meta = $('codeMeta');
+    $('codeText').textContent = o.code.slice(0,4)+' '+o.code.slice(4);
+    if(meta){ meta.textContent = '长期有效 · 可手动更新'; meta.className = 'meta'; }
+  }
+  // 8 位码只在这里落盘一次，页面加载时回读——避免每次刷新换码让已接管的屏全掉线
+  if(!LS.getItem('cds.consoleCode')) saveCode();
+
+  // ── 已接管屏幕：B3 由「不可点击的计数」反转为「可点开 + 单台移出」 ──
+  function upsertDevice(d){
+    if(!d || !d.id) return;
+    var hit = null;
+    for(var i=0;i<S.devices.length;i++){ if(S.devices[i].id===d.id){ hit=S.devices[i]; break; } }
+    if(hit){ hit.ts = d.ts || Date.now(); if(d.scene) hit.scene = d.scene; if(d.label) hit.label = d.label; }
+    else S.devices.push({ id:d.id, label:d.label || ('教室屏幕 '+String(d.id).slice(-2)), ts:d.ts || Date.now(), scene:d.scene || 'standby' });
+    try{ LS.setItem('cds.devices', JSON.stringify(S.devices)); }catch(e){}
+    renderDevices();
+  }
+  function renderDevices(){
+    var box = $('devRows');
+    var list = S.devices || [];
+    var n = 0;
+    list.forEach(function(d){ if(Date.now() - (+d.ts||0) < 5000) n++; });
+    S.termOnline = n;
+    var c = $('count'); if(c) c.classList.toggle('zero', n===0);
+    var ct = $('countText'); if(ct) ct.textContent = n ? ('当前 '+n+' 个终端在线') : '当前 0 个终端在线';
+    if(!box) return;
+    // 每秒 beat 都重建 DOM 会让按钮在点击瞬间被换掉（实测 hit 不到）——只在签名变化时重绘
+    var sig = list.map(function(d){ return d.id+':'+(Date.now()-(+d.ts||0)<5000?'1':'0')+':'+(d.scene||''); }).join('|');
+    if(box.getAttribute('data-sig') === sig) return;
+    box.setAttribute('data-sig', sig);
+    if(!list.length){ box.removeAttribute('data-sig'); box.innerHTML = '<div class="devEmpty">还没有屏幕接管这台控制端：在屏幕输入上面的控制码</div>'; return; }
+    box.innerHTML = list.map(function(d){
+      var on = (Date.now() - (+d.ts||0) < 5000);
+      return '<div class="devRow"><span class="dot'+(on?'':' off')+'"></span>'
+        + '<span class="devName">'+esc(d.label||d.id)+'</span>'
+        + '<span class="devId">'+esc(d.id)+'</span>'
+        + '<span class="devScene">'+esc(SCENE_NAME[d.scene]||'—')+'</span>'
+        + '<button class="devKick" data-id="'+esc(d.id)+'">移出接管</button></div>';
+    }).join('');
+    [].slice.call(box.querySelectorAll('.devKick')).forEach(function(b){
+      b.addEventListener('click', function(){ kickDevice(b.getAttribute('data-id')); });
+    });
+  }
+  // 移出单台＝撤销那一条绑定（不是封禁）：可立即重接，记一条审计
+  function kickDevice(id){
+    var name = id;
+    S.devices.forEach(function(x){ if(x.id===id && x.label) name = x.label; });
+    send({kind:'device.bindState', state:'revoked', scope:'device', deviceId:id, reason:'kicked'});
+    // 真机＝devices.revoked_at = now + 一条审计；原型用同源 localStorage 顶替（显示端重连时按此判有效）
+    try{ var rv = JSON.parse(LS.getItem('cds.revoked')||'{}') || {}; rv[id] = Date.now(); LS.setItem('cds.revoked', JSON.stringify(rv)); }catch(e){}
+    S.devices = S.devices.filter(function(x){ return x.id !== id; });
+    try{ LS.setItem('cds.devices', JSON.stringify(S.devices)); }catch(e){}
+    renderDevices();
+    toast('已移出接管：' + name + '（随时可用同一张码重新接入）');
+  }
+
+  // ── 终端在线（心跳） ──
+  // 真机：登记表 + presence 聚合；原型：同源 localStorage 的 cds.device（显示端每秒写 ts）
+  function beat(){
+    var prev = S.termOnline;
+    try{
+      var d = JSON.parse(LS.getItem('cds.device')||'null');
+      if(d && d.id && LS.getItem('cds.bound')) upsertDevice(d);
+    }catch(e){}
+    renderDevices();
+    if(prev === 0 && S.termOnline > 0) toast('教室屏幕已连上');
+    else if(prev > 0 && S.termOnline === 0) toast('教室屏幕已断开', true);
+  }
+  setInterval(beat, 1000);
+
+  // 顶栏计数＝入口（不再是只读指示）
+  (function(){
+    var c = $('count');
+    if(c){
+      c.addEventListener('click', function(){ var p=$('devPanel'); if(!p) return; p.hidden = !p.hidden; if(!p.hidden) renderDevices(); });
+      c.addEventListener('keydown', function(e){ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); c.click(); } });
+    }
+    var cl = $('devClose'); if(cl) cl.addEventListener('click', function(){ $('devPanel').hidden = true; });
+    renderCode(); renderDevices();
+  })();
+
+  // ── 场景切换 ──
+  // V2.1.2：进入「看内容」的画面（article / cast）必须先停音乐——编排 pause-first，
+  // 不是场景指令的副作用（cast.start 本身不带 player.* 副作用）。
+  function gotoScene(scene){
+    if(scene === S.scene) return;
+    if((scene === 'article' || scene === 'cast') && S.music.playing){
+      S.music.playing = false;                                   // ① player.pause
+      send({kind:'music', playing:false, pos:S.music.pos, idx:S.music.idx});
+      renderNP();
+      toast('音乐已暂停（' + (scene==='cast'?'板书':'文章') + '期间不播放音乐；结束不自动续播）');
+      setTimeout(function(){ applyScene(scene); }, 160);          // ② 回执后切画面
+      return;
+    }
+    applyScene(scene);
+  }
+
+  function applyScene(scene){
+    S.scene = scene;
+    if(scene === 'music' && S.music.playing === false && S.music.pos > 0) S.music.playing = true;
+    send({kind:'scene', scene:scene});
+    if(scene==='music') send({kind:'music', playing:S.music.playing, pos:S.music.pos, idx:S.music.idx});
+    if(scene==='standby') send({kind:'standby', mode:S.standby.mode});
+    if(scene==='article'){
+      if(S.article.cast){ send({kind:'article', idx:S.article.idx, page:S.article.page, cast:true}); }
+      else { render(); return; }   // 预览：只切本机面板，不上屏
+    }
+    if(scene==='cast') send({kind:'cast', active:S.cast.active, text:S.cast.text, scene:'cast'});
+    render();
+  }
+
+  // ── 渲染 ──
+  function renderTabs(){
+    document.querySelectorAll('.seg button').forEach(function(b){
+      b.setAttribute('aria-selected', String(b.dataset.scene === S.scene));
+    });
+    renderNP();
+  }
+
+  function isCoarse(){ return !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches); }
+  function measuredLines(){ var r=S.art&&S.art.report; return (r&&r.viewLines)?('首屏 '+r.viewLines+' 行'):'—（等显示端回报）'; }
+  // V2.1.11：有效上限 = min(24 可读性底线, floor(可用宽÷字号))；24 不是技术限制（24px 下 floor 可达 72），
+  // 是一行超过 24 个全角字后排跟行会跳字。
+  // V2.1.12：可用宽**取显示端实测**（layoutMetrics.availW）。写死 1728 会在 1280/1640 屏上算出过大的上限：
+  // 1280 屏可用宽≈1152，真上限 18，控制台却给出 24 —— 锁了 24 被显示端静默收紧回 18，等于没锁上。
+  var AVL_W=null, AVL_H=null;                              // 显示端实测；未连接时为 null
+  function availW(){ return AVL_W||1728; }
+  function cMax(fpx){ var f=+fpx; if(!f) f=72; return Math.max(6, Math.min(24, Math.floor(availW()/Math.max(24,Math.min(160,f))))); }
+  function cMaxSrc(){ return AVL_W ? ('显示端实测 '+AVL_W+'px') : '未连接，按 1920 屏估算 1728px'; }
+  function cplOf(){ return (S.style.charsPerLine==='auto'||!S.style.charsPerLine) ? cMax(cNom()) : Math.min(cMax(cNom()), +S.style.charsPerLine); }
+  function cplLabel(){ return (S.style.charsPerLine==='auto'||!S.style.charsPerLine) ? ('自动 '+cplOf()+' 字') : (cplOf()+' 字'); }
+  function cNom(){ var v=S.style.fontSizePx; return (v==='auto'||!v) ? 72 : +v; }
+
+  // V2.1.2：顶栏常驻音乐状态条。article/cast 下音乐必为 paused（继续置灰，服务端会 409）
+  function renderNP(){
+    var np=$('np'); if(!np) return;
+    var muted = (S.scene === 'article' || S.scene === 'cast');
+    var on = S.scene !== 'music' && (S.music.playing || S.music.pos > 0);
+    np.style.display = on ? 'inline-flex' : 'none';
+    if(!on) return;
+    var it = S.music.items[S.music.idx] || {t:'—'};
+    $('npTxt').textContent = '♪ ' + it.t + (muted ? '（已暂停）' : ' · 播放中') + ' · ' + fmt(S.music.pos) +
+      ' · 画面在「' + ({standby:'待机',article:'文章',cast:'板书'}[S.scene]||S.scene) + '」';
+    var rb = $('npResume');
+    if(rb){
+      rb.disabled = muted;
+      rb.style.opacity = muted ? .4 : 1;
+      rb.style.cursor = muted ? 'not-allowed' : 'pointer';
+      rb.title = muted ? '文章/板书期间不播放音乐（服务端 409 audio_blocked_by_scene）' : '继续播放';
+    }
+  }
+
+  function renderLists(){
+    function row(it, i, kind, active){
+      var meta = kind==='music' ? it.m : (it.v+' '+it.ch+' 章');
+      return '<li data-kind="'+kind+'" data-i="'+i+'" class="'+(active?'active':'')+'">'+
+        '<span class="idx">'+(i+1)+'</span><span class="t">'+esc(it.t)+'</span><span class="m">'+esc(meta)+'</span>'+
+        '<span class="mv"><button data-up="'+i+'" title="上移">↑</button><button data-down="'+i+'" title="下移">↓</button><button data-del="'+i+'" title="移除">✕</button></span></li>';
+    }
+    $('musicList').innerHTML = S.music.items.map(function(it,i){ return row(it,i,'music', S.scene==='music' && i===S.music.idx); }).join('') ||
+      '<li class="empty" style="cursor:default">今天还没排音乐，点下面＋添加</li>';
+    $('articleList').innerHTML = S.article.items.map(function(it,i){ return row(it,i,'article', S.scene==='article' && i===S.article.idx); }).join('') ||
+      '<li class="empty" style="cursor:default">今天还没排经文</li>';
+    $('mCount').textContent = S.music.items.length+' 条';
+    $('aCount').textContent = S.article.items.length+' 条';
+  }
+
+  var VERSES = {
+    23: [['1','耶和华是我的牧者，我必不致缺乏。'],['2','他使我躺卧在青草地上，领我在可安歇的水边。'],['3','他使我的灵魂苏醒，为自己的名引导我走义路。'],['4','我虽然行过死荫的幽谷，也不怕遭害，因为你与我同在。'],['5','在我敌人面前，你为我摆设筵席；你用油膏了我的头，使我的福杯满溢。'],['6','我一生一世必有恩惠慈爱随着我，我且要住在耶和华的殿中，直到永远。']],
+    3: [['1','此后，约伯开口咒诅自己的生日。'],['2','说：愿我生的那日和说怀了男胎的那夜都灭没。'],['3','愿那日变为黑暗；愿神不从上面寻找它。']]
+  };
+
+  function render(){
+    renderTabs(); renderLists();
+    var n = $('now'), html='';
+    if(S.scene === 'standby'){
+      var blank = S.standby.mode==='blank';
+      html = '<div class="stage"><div style="width:100%;max-width:520px;text-align:center">'+
+        '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">教室屏幕此刻显示</div>'+
+        '<div style="display:flex;gap:10px;justify-content:center;margin-bottom:14px">'+
+          '<button class="'+(blank?'':'primary')+'" data-sb="theme">主题大图</button>'+
+          '<button class="'+(blank?'primary':'')+'" data-sb="blank">黑屏（不让学生看到内容）</button>'+
+        '</div>'+
+        '<div style="border:1px dashed var(--border);border-radius:12px;padding:18px;color:var(--muted);font-size:12px;line-height:1.8">'+
+          (blank?'⏹ 纯黑：只留底部 1px 热区。<b>注意</b>：复制模式下学生仍看得见你按了这个按钮。'
+                :'🖼 主题大图 + 教室名 + 时间。图与压暗层随样式下发。')+
+          '<br>待机是<b>默认态</b>：结束板书 / 结束投屏 / 音乐 stop 都回到这里。'+
+          '<br>换人操作：屏端<b>右下角长按 3 秒 → 二次确认</b>，屏自行解绑并回到输码页（不必找上一位老师，也没有管理员接口）；随后输自己的 8 位码即可接管。'+
+        '</div>'+
+        '<div style="margin-top:14px;font-size:12px;color:var(--muted)">自定义主题上传属 P1（R2 预签名），本版只有内置图与纯黑。</div>'+
+      '</div></div>';
+    } else if(S.scene === 'music'){
+      var it = S.music.items[S.music.idx] || { t:'（清单为空）', m:'--:--', dur:245000 };
+      html = '<div class="stage"><div style="width:100%">'+
+
+        '<div class="musictitle">'+esc(it.t)+'</div>'+
+        '<div class="musicsub">主音轨 · 预选第 '+(S.music.idx+1)+' / '+S.music.items.length+' 首</div>'+
+        '<div class="bar"><span id="posLabel">'+fmt(S.music.pos)+'</span><div class="track" id="track"><div class="fill" id="fill"></div><div class="knob" id="knob"></div></div><span>'+it.m+'</span></div>'+
+        '<div class="ctrl">'+
+          '<button data-m="prev" title="清单上一首">⏮</button>'+
+          '<button data-m="skip" title="-5s">−5s</button>'+
+          '<button class="play" data-m="toggle">'+(S.music.playing?'暂停':'播放')+'</button>'+
+          '<button data-m="skip2" title="+5s">+5s</button>'+
+          '<button data-m="next" title="清单下一首">⏭</button>'+
+        '</div>'+
+        '<div class="extra"><span style="color:#8ab4f8">🔊 声音从本机输出</span><span>音量</span><input type="range" min="0" max="100" value="50" id="vol">'+
+        '<button class="ghost" style="font-size:12px" data-m="track">切伴奏</button>'+
+        '<span class="ro">（进入文章/板书会自动暂停；结束后不自动续播，点「继续」才恢复 —— V2.1.2）</span></div>'+
+        '<div class="ro" id="phoneMute" style="display:'+(isCoarse()?'block':'none')+';margin-top:8px">📱 手机/平板控制页本身<b>不放声</b>：声音只从接了场地音响的那台电脑出（D-A′）。手机上音乐面板置灰不代表坏了。</div>'+
+      '</div></div>';
+    } else if(S.scene === 'article'){
+      var a = S.article.items[S.article.idx] || {v:'诗篇',ch:23,t:'诗篇 23 章'};
+      var vs = VERSES[a.ch] || VERSES[23];
+      var rp = S.art.report || {}, u = S.article.unit || 'page';
+      var rfpx = Math.max(24, Math.min(160, cNom())), rlh = +(S.style.lineHeight||1.75).toFixed(2);
+      // 屏数/节数由显示端实测回报；未回报前显示「—」而不是猜一个数（控制台不算分页）
+      var where = (u==='section')
+        ? ('节 '+((rp.sectionIndex!=null?rp.sectionIndex+1:'—'))+' / '+(rp.sectionCount||'—'))
+        : ('第 '+((rp.pageIndex!=null?rp.pageIndex+1:'—'))+' / '+(rp.pageCount||'—')+' 屏');
+      html = '<div class="stage"><div class="article" style="font-size:'+(17*S.cf).toFixed(1)+'px;line-height:'+S.style.lineHeight+';text-align:'+S.style.align+'">'+
+        '<div class="head"><b>'+esc(a.t)+'</b><span>预选第 '+(S.article.idx+1)+' 条</span>'+
+          '<span style="margin-left:auto">'+where+(S.article.cast?'':' · 学生看不到（未上屏）')+'</span></div>'+
+        '<div class="verses">'+ vs.map(function(v){ return '<p><span class="sn">'+v[0]+'</span>'+esc(v[1])+'</p>'; }).join('') +'</div>'+
+        '<div style="font-size:12px;color:var(--muted);margin:0 0 8px">预览＝<b>内容一致、字号各自</b>（像素一致做不到）；分页/步进由显示端按真实几何实测，本窗不猜。'+
+          (rp.viewLines?(' 显示端首屏 '+rp.viewLines+' 行。'):'')+'</div>'+
+        '<div class="readbar">'+
+          '<label title="每行几个字；默认 auto（按显示端屏宽÷字号），上限 24 是可读性底线">每行 <input type="range" id="rChars" min="6" max="'+cMax(rfpx)+'" step="1" value="'+cplOf()+'" data-cmax="'+cMax(rfpx)+'"><span class="rv" id="rCharsVal">'+cplLabel()+'</span>'+
+            '<em class="ro" id="rCharsMax" style="font-size:11px" title="'+cMaxSrc()+'">上限 '+cMax(rfpx)+' 字</em></label>'+
+          '<span class="todo">字号 <b id="rFontRo">'+(S.style.fontSizePx==='auto'?'自动':rfpx+'px')+'</b> · 行高 <b id="rLhRo">'+rlh.toFixed(2)+'</b>（公共属性，在底部「显示样式」控制栏调） · <b id="rLines">'+(rp.viewLines?('首屏 '+rp.viewLines+' 行'):'—（等显示端回报）')+'</b> · 每行 '+cplLabel()+' · 改一次即下发，显示端重排重发'+
+            (S.art.eff?(' · <b>生效</b> 行距 '+S.art.eff.lineHeight.toFixed(2)+' / 字号 '+Math.round(S.art.eff.fontSizePx)+'px / 每行 '+S.art.eff.charsPerLine+' 字'):'')+'</span>'+
+        '</div>'+
+        '<div class="castbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+          '<button data-a="unit">'+(u==='section'?'切到「按屏」':'切到「按节」')+'</button>'+
+          '<button data-a="prev">'+(u==='section'?'上一节':'上一屏')+'</button>'+
+          '<button data-a="next">'+(u==='section'?'下一节':'下一屏')+'</button>'+
+          '<button data-a="fit" title="按「先行距 → 再每行字数 → 最后字号」三档收进 1 屏；只作用于文章，可回滚；板书不在此列（板书不降档）">整章一屏</button>'+
+          '<button class="'+(S.article.cast?'':'primary')+'" data-a="present">'+(S.article.cast?'结束投屏':'开始投屏')+'</button>'+
+          '<span style="margin-left:auto;font-size:12px;color:var(--muted)">'+(S.article.cast?'● 已上屏':'○ 预览中 · 尚未上屏')+'</span>'+
+        '</div>'+
+      '</div></div>';
+    } else {
+      html = '<div class="stage stage-cast"><div class="castbox">'+
+        '<div class="casthead"><b>板书</b><span>独占全屏 · 满高编辑区</span>'+
+          '<label style="margin-left:auto">发送行数 <select id="castLines">'+
+            [['3','3 行'],['5','5 行'],['8','8 行'],['10','10 行'],['all','全部']].map(function(o){
+              return '<option value="'+o[0]+'"'+(String(S.cast.lines)===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+
+          '</select></label></div>'+
+        '<textarea id="castText" placeholder="在这里写板书正文，或选择图片 / PDF…">'+esc(S.cast.draft)+'</textarea>'+
+        '<div class="castbar">'+
+          '<span style="margin-right:auto;color:var(--muted);font-size:12px">'+(isCoarse()
+            ? '点右侧「发送」按钮 ＝ 发送<b>光标所在行及上方 N 行</b>（触屏不绑双击、不绑长按：双击会缩放/选词）'
+            : '双击文本框 ＝ 发送<b>光标所在行及上方 N 行</b>；发送后 3 秒内可撤销')+'</span>'+
+          '<button class="ghost" id="castPick">选择图片 / PDF</button>'+
+          (S.cast.active?'<button class="ghost" id="castToggle">结束板书</button>':'')+
+          '<button class="primary" id="castSend">'+(S.cast.active?'重发（原地替换）':'投出到教室屏幕')+'</button>'+
+        '</div></div></div>';
+    }
+    n.innerHTML = html;
+    bindCast();
+    renderProgress();
+  }
+
+  function renderProgress(){
+    var fill=$('fill'), knob=$('knob'), pos=$('posLabel');
+    if(!fill) return;
+    var d = (S.music.items[S.music.idx]||{dur:245000}).dur;
+    var p = Math.min(1, S.music.pos/d);
+    fill.style.width = (p*100)+'%'; knob.style.left = (p*100)+'%';
+    if(pos) pos.textContent = fmt(S.music.pos);
+  }
+
+  var timer = setInterval(function(){
+    if(S.music.playing){
+      S.music.pos += 250;
+      var d=(S.music.items[S.music.idx]||{dur:245000}).dur;
+      if(S.music.pos >= d){
+        if(S.music.idx < S.music.items.length-1){ S.music.pos=0; S.music.playing=false; toast('本曲结束：不自动续播，点下一首继续'); render(); }
+        else { S.music.playing=false; S.music.pos=0; toast('已到清单末尾'); render(); }
+      }
+      renderProgress();
+    }
+  }, 250);
+
+  // ── 事件 ──
+  document.querySelector('.seg').addEventListener('click', function(e){
+    var b=e.target.closest('button[data-scene]'); if(!b) return;
+    if(S.termOnline===0 && b.dataset.scene!=='standby'){ /* 离线仍可点，但提示 */ }
+    gotoScene(b.dataset.scene);
+  });
+
+  document.querySelector('.lists').addEventListener('click', function(e){
+    var mv=e.target.closest('button[data-up],button[data-down],button[data-del]');
+    var li=e.target.closest('li[data-kind]');
+    if(!li) return;
+    var kind=li.dataset.kind, arr = kind==='music'?S.music.items:S.article.items, i=+li.dataset.i;
+    if(mv){
+      e.stopPropagation();
+      if(mv.dataset.del!==undefined){ arr.splice(i,1); if(kind==='music'&&S.music.idx>=arr.length) S.music.idx=Math.max(0,arr.length-1); }
+      else if(mv.dataset.up!==undefined && i>0){ var t=arr[i-1]; arr[i-1]=arr[i]; arr[i]=t; }
+      else if(mv.dataset.down!==undefined && i<arr.length-1){ var t2=arr[i+1]; arr[i+1]=arr[i]; arr[i]=t2; }
+      saveLists(); render(); return;
+    }
+    // 点条目即用
+    if(kind==='music'){
+      // V2.1.5：点预选条目＝装载并落 paused（positionMs=0、曲目保留），点「播放」才出声。
+      // 例外：正在播放时点「下一首」＝续播（否则连点两下会莫名静音）。
+      var wasPlaying = S.music.playing;
+      S.music.idx=i; S.music.pos=0; S.music.playing=wasPlaying; S.scene='music';
+      send({kind:'scene',scene:'music'});
+      send({kind:'music', playing:wasPlaying, pos:0, idx:i});
+      toast(wasPlaying ? '已切到「'+arr[i].t+'」并续播' : '已装载「'+arr[i].t+'」· 点「播放」才出声');
+    } else {
+      S.article.idx=i; S.article.page=0; S.article.cast=false; S.scene='article';
+      toast('已在预览：「'+arr[i].t+'」 · 点「开始投屏」才上屏');
+    }
+    render();
+  });
+
+  document.querySelectorAll('.add').forEach(function(b){
+    b.addEventListener('click', function(){
+      var kind=b.dataset.add;
+      if(kind==='music'){
+        var name = prompt('添加曲目（原型用输入代替搜索框）','新加的诗歌');
+        if(name){ S.music.items.push({t:name,m:'--:--',dur:240000,track:'main'}); saveLists(); render(); toast('已加入预选末尾'); }
+      } else {
+        var name2 = prompt('添加经文（如：诗篇 23 章）','诗篇 23 章');
+        if(name2) { S.article.items.push({t:name2,v:'诗篇',ch:23}); saveLists(); render(); toast('已加入预选末尾'); }
+      }
+    });
+  });
+
+  $('now').addEventListener('click', function(e){
+    var m = e.target.closest('button[data-m]'), a = e.target.closest('button[data-a]');
+    if(m){
+      var k=m.dataset.m;
+      if(k==='toggle'){ S.music.playing=!S.music.playing; if(S.music.playing) S.scene='music'; }
+      if(k==='skip') S.music.pos=Math.max(0,S.music.pos-5000);
+      if(k==='skip2') S.music.pos=Math.min(300000,S.music.pos+5000);
+      if(k==='prev'){ S.music.idx=Math.max(0,S.music.idx-1); S.music.pos=0; S.music.playing=true; }
+      if(k==='next'){ S.music.idx=Math.min(S.music.items.length-1,S.music.idx+1); S.music.pos=0; S.music.playing=true; }
+      if(k==='track') toast('已切换音轨（原型示意）');
+      send({kind:'music', playing:S.music.playing, pos:S.music.pos, idx:S.music.idx, action:k});
+      render(); return;
+    }
+    if(a){
+      var k2=a.dataset.a, uu=S.article.unit||'page';
+      if(k2==='unit'){ S.article.unit = (uu==='section'?'page':'section'); send({kind:'articleUnit', unit:S.article.unit}); render(); return; }
+      if(k2==='fit'){ send({kind:'fitOnePage'}); toast('已请求「整章一屏」：显示端先行距、再每行字数、最后字号，生效值会回报'); return; }
+      if(k2==='next' || k2==='prev'){
+        send({kind:'scroll', direction:k2, unit:uu, steps:1});
+        // 页码/节号等显示端回执（pageMap 摘要），控制台不自己算
+        render(); return;
+      }
+      if(k2==='present'){
+        S.article.cast = !S.article.cast;
+        if(S.article.cast){ S.scene='article'; send({kind:'scene',scene:'article'}); send({kind:'article',idx:S.article.idx,page:S.article.page,unit:S.article.unit,cast:true}); toast('已投出到教室屏幕'); }
+        else { S.scene='standby'; send({kind:'scene',scene:'standby'}); toast('已结束投屏：屏幕回待机'); }
+        render(); return;
+      }
+      render(); return;
+    }
+    var sb=e.target.closest('button[data-sb]');
+    if(sb){
+      S.standby.mode = sb.dataset.sb;
+      send({kind:'standby', mode:S.standby.mode});
+      toast(S.standby.mode==='blank'?'已黑屏（内容不泄露；学生仍看得见操作）':'已切回主题大图');
+      render(); return;
+    }
+    if(e.target.id==='castToggle'){
+      S.cast.active = false; S.scene='standby';
+      send({kind:'cast', active:false, text:S.cast.text, castId:S.cast.castId, scene:'standby'});
+      toast('已结束板书（屏幕回待机）');
+      render(); return;
+    }
+    if(e.target.id==='castSend'){ sendCast(); return; }
+    if(e.target.id==='castPick') toast('图片 / PDF 上传走 R2 预签名（原型不实现）');
+  });
+
+  // 点进度条跳转
+  document.addEventListener('click', function(e){
+    if(e.target.closest('#track')){
+      var r = e.target.closest('#track').getBoundingClientRect();
+      var p = Math.min(1, Math.max(0, (e.clientX-r.left)/r.width));
+      var d = (S.music.items[S.music.idx]||{dur:245000}).dur;
+      S.music.pos = Math.round(p*d);
+      send({kind:'music', playing:S.music.playing, pos:S.music.pos, idx:S.music.idx, action:'seek'});
+      renderProgress();
+    }
+  });
+
+  var inputTimer;
+  $('now').addEventListener('input', function(e){
+    if(e.target.id==='castText'){ S.cast.draft=e.target.value; clearTimeout(inputTimer); inputTimer=setTimeout(function(){ LS.setItem('cds.castDraft', S.cast.draft); },400); }   // V2.1.5：打字只存草稿，上屏只在「双击/发送」
+    if(e.target.id==='vol'){ send({kind:'volume', value:+e.target.value}); }
+  });
+
+  // ── 控制码 ──
+  // V2.1.2：继续——只在 standby 下可用；article/cast 下按钮禁用（服务端 409 audio_blocked_by_scene）
+  $('npResume').addEventListener('click', function(){
+    if(S.scene === 'article' || S.scene === 'cast'){
+      toast('文章/板书期间不播放音乐：请先回到「待机」或「音乐」', true);
+      return;
+    }
+    S.music.playing = true;
+    send({kind:'music', playing:true, pos:S.music.pos, idx:S.music.idx});
+    toast('继续播放（从 ' + fmt(S.music.pos) + ' 起）'); render();
+  });
+
+  // V2.1.1：顶栏常驻 now-playing 的「停止」——音乐是独立音轨，不需要先切回音乐画面
+  $('npStop').addEventListener('click', function(){
+    S.music.playing = false;
+    send({kind:'music', playing:false, pos:S.music.pos, idx:S.music.idx, action:'stop'});
+    toast('已停止播放（画面不动）'); render();
+  });
+
+  // CO-2026-11-18-05：⟳ ＝ 更新控制码＝重置接管（撤销该用户**全部**绑定，不只是换字符串）。
+  // 接第二台屏**不**走这里——码不再被消费，同一个码可以接任意多台。
+  var rotArmed = false, rotTimer = null;
+  $('refreshCode').addEventListener('click', function(){
+    var btn = this, n = S.termOnline;
+    if(n > 0 && !rotArmed){
+      rotArmed = true; btn.textContent = '再点确认';
+      clearTimeout(rotTimer);
+      rotTimer = setTimeout(function(){ rotArmed = false; btn.textContent = '\u27F3'; }, 3000);
+      toast('再点一次确认：会让 ' + n + ' 台屏幕回输码页'
+        + ((S.scene==='article'||S.scene==='cast') ? '（正在投屏的会停回待机）' : ''), true);
+      return;
+    }
+    clearTimeout(rotTimer); rotArmed = false; btn.textContent = '\u27F3';
+    var c = newCode();
+    setCode(c);
+    // 载体＝mqtt.md V2.2.23 的 device.bindState 快照（d/{deviceId}/bind, retain）——不是一次性撤销指令，
+    // 否则刷新后重绑的屏在订阅瞬间又收到、再被踢。原型用 BroadcastChannel 顶替 broker，事件名与协议同名。
+    send({kind:'device.bindState', state:'revoked', scope:'user', reason:'code_rotated'});
+    S.devices = []; try{ LS.setItem('cds.devices','[]'); }catch(e){}
+    renderDevices();
+    toast(n ? ('已更新控制码：' + n + ' 台屏幕回输码页，请用新码重新输入')
+            : '已更新控制码（尚无屏幕接管，直接拿去接屏）');
+  });
+  var unbindArmed = false, unbindTimer = null;
+  $('unbindAll').addEventListener('click', function(){
+    var b = this;
+    if(!unbindArmed){
+      unbindArmed = true; b.textContent = '再点一次确认';
+      clearTimeout(unbindTimer);
+      unbindTimer = setTimeout(function(){ unbindArmed=false; b.textContent='全部解绑'; }, 3000);
+      return;
+    }
+    clearTimeout(unbindTimer); unbindArmed=false; b.textContent='全部解绑';
+    send({kind:'device.bindState', state:'revoked', scope:'user', reason:'unbind'});
+    S.devices = []; try{ LS.setItem('cds.devices','[]'); }catch(e){} renderDevices();
+    toast('已全部解绑：所有屏幕回到输码页', true);
+  });
+
+  // ── 样式下发 ──
+  var map = { song:'"Songti SC","Noto Serif SC",serif', hei:'"PingFang SC","Microsoft YaHei",sans-serif', kai:'"Kaiti SC",KaiTi,serif', 'system-ui':'system-ui,sans-serif' };
+  function readStyle(){
+    var fpx = Math.max(24, Math.min(160, +$('sFontSize').value || 72));
+    S.style = {
+      fontFamily:{ ui:'system-ui', body:$('sFont').value },
+      fontSizePx: (S.style.fontSizePx==='auto' ? 'auto' : fpx), lineHeight:+$('sLh').value,
+      charsPerLine: (S.style.charsPerLine==='auto' ? 'auto' : Math.max(6, Math.min(cMax(fpx), +S.style.charsPerLine))),
+      fg:$('sFg').value, bg:$('sBg').value, align:$('sAlign').value
+    };
+    $('sFontVal').textContent = fpx + ' px';
+    $('sLhVal').textContent = S.style.lineHeight.toFixed(2);
+    // V2.1.40：面板里的只读读数随控制栏同步（控制栏是唯一入口，读数不能落后一拍）
+    var _lro=$('rLhRo'); if(_lro) _lro.textContent = S.style.lineHeight.toFixed(2);
+    var _fro=$('rFontRo'); if(_fro) _fro.textContent = (S.style.fontSizePx==='auto' ? '自动' : (Math.round(+S.style.fontSizePx)+'px'));
+    // V2.1.9：行数**只认 display 上报的 pageMap.viewLines**。
+    // 这里曾用固定常数当可用高再除以 (fpx*行高)：那个常数≠.body.clientHeight(≈911)，且公式不含段距(0.63 行/节)，
+    // 72px 给 7 行而真实 5 行；行距成了用户可调项后，任何本地公式都会立刻过期。
+    var e=$('sFontEst'); if(e) e.textContent = measuredLines();
+    var sm=$('styleSummary'); if(sm) sm.textContent=($('sFont').selectedOptions[0]||{}).textContent+' · '+(S.style.fontSizePx==='auto'?'字号自动':fpx+'px')+' · 行高 '+S.style.lineHeight.toFixed(2)+' · 每行 '+cplLabel();
+    return S.style;
+  }
+  ['sFont','sLh','sAlign','sFg','sBg'].forEach(function(id){
+    $(id).addEventListener('input', function(){ readStyle(); $('styleState').textContent='未下发（有改动）'; });
+  });
+  function publishStyle(noRender){
+    var st = readStyle(); st.styleVersion = Date.now();
+    st.fontStack = map[st.fontFamily.body] || 'system-ui,sans-serif';
+    LS.setItem('cds.style', JSON.stringify(st));
+    send({kind:'style', style:st});
+    var ss=$('styleState'); if(ss) ss.textContent = '已下发 v'+String(st.styleVersion).slice(-4)+' · 等待回执';
+    setTimeout(function(){ var e2=$('styleState'); if(e2) e2.textContent='已生效（显示端 '+S.termOnline+' 台）'; }, 600);
+    if(!noRender) render();
+  }
+  $('pushStyle').addEventListener('click', function(){ publishStyle(false); });
+
+  // V2.1.40：字号/行距已移到底部「显示样式」控制栏（公共属性，article/cast/music 共用同一份状态）。
+  // 面板里只留「每行字数」，它依赖字号上限 c_max ⇒ 字号一变必须当场联动 clamp（V2.1.10 那条不能丢）。
+  document.addEventListener('input', function(ev){
+    var id = ev.target && ev.target.id;
+    if(id !== 'rChars') return;
+    var mx = cMax(cNom());
+    var c=Math.max(6, Math.min(mx, +ev.target.value||6));
+    S.style.charsPerLine=c; ev.target.value=c;
+    var cv=$('rCharsVal'); if(cv) cv.textContent=c+' 字'+(c>=mx?'（上限）':'');
+    publishStyle(true);
+  });
+
+  // V2.1.40：字号现在只有控制栏一个入口 ⇒ 拖动即锁定。
+  // 原来的锁值动作在文章面板的 #rFontSize 里（删掉后 auto 档拖了不会变＝看着没被控制，正是他被抱怨的那类缺陷）。
+  $('sFontSize').addEventListener('input', function(){
+    var v = Math.max(24, Math.min(160, +this.value||72));
+    S.style.fontSizePx = v;
+    readStyle(); $('styleState').textContent='未下发（有改动）';
+    var mx = cMax(v), rc = $('rChars');
+    if(rc){ rc.max=mx; rc.setAttribute('data-cmax',mx); if(+rc.value>mx){ rc.value=mx; S.style.charsPerLine=mx; } }
+    var rcm=$('rCharsMax'); if(rcm) rcm.textContent='上限 '+mx+' 字';
+    var rcv=$('rCharsVal'); if(rcv) rcv.textContent=cplLabel()+(rc&&+rc.value>=mx?'（上限）':'');
+    var fro=$('rFontRo'); if(fro) fro.textContent=v+'px';
+    var lro=$('rLhRo'); if(lro) lro.textContent=S.style.lineHeight.toFixed(2);
+  });
+
+  // ── 显示端回执 ──
+  if(BC) BC.onmessage = function(ev){
+    var d = ev.data||{};
+    if(d.kind==='ack') toast(d.text||'显示端已确认');
+    if(d.kind==='ackBound'){
+      // CO-2026-11-18-05：码不消费、不续码——第二三台直接输同一张码。
+      if(d.deviceId) upsertDevice({ id:d.deviceId, ts:Date.now(), scene:'standby', label:'教室屏幕 '+String(d.deviceId).slice(-2) });
+      toast('教室屏幕已接管' + (S.termOnline > 1 ? ('（当前 ' + S.termOnline + ' 台）') : ''));
+      beat();
+    }
+    // V2.1：显示端无音频，audioBlocked 已删除
+    if(d.kind==='standby'){ S.standby.mode=d.mode||'theme'; if(S.scene==='standby') render(); }
+    // V2.1.6：显示端 pageMap 摘要（6 标量）与板书实际字号
+    if(d.kind==='pageMap'){
+      S.art.report = d;
+      if(d.anchor) S.art.anchor = d.anchor;                 // {verseSn, charOffset}：协议的位置摘要
+      var est=$('sFontEst'); if(est) est.textContent = measuredLines();
+      var rln=$('rLines'); if(rln) rln.textContent = d.viewLines ? ('首屏 '+d.viewLines+' 行') : '—（等显示端回报）';
+      if(typeof d.charsPerLine==='number') S.art.effCpl=d.charsPerLine;   // 显示端回报派生结果，不覆盖本机 auto 开关
+      if(typeof d.unit==='string') S.article.unit=d.unit;
+      if(typeof d.pageIndex==='number') S.article.page=d.pageIndex;
+      if(typeof d.effectivePx==='number') toast('整章一屏：字号收到 '+d.effectivePx+'px（行距/每行字数已先试过）');
+      // V2.1.9：正在拖字号/行距滑块时不整块重绘（重建 DOM 会让滑块丢焦点、拖一下就断）
+      var dragging = document.activeElement && document.activeElement.type==='range';
+      if(S.scene==='article' && !dragging) render();
+    }
+    if(d.kind==='layoutMetrics'){
+      // 显示端实测几何：可用宽变了，控制台的「每行上限」当场跟着变（屏不同上限不同）
+      var wChanged = (AVL_W!==d.availW);
+      AVL_W=d.availW; AVL_H=d.availH;
+      var rc2=$('rChars'), mx2=cMax(cNom());
+      if(wChanged && rc2 && +rc2.max!==mx2){ rc2.max=mx2; rc2.setAttribute('data-cmax',mx2);
+        if(+rc2.value>mx2) rc2.value=mx2;
+        var rcm=$('rCharsMax'); if(rcm) rcm.textContent='上限 '+mx2+' 字';
+        var rcv=$('rCharsVal'); if(rcv && (S.style.charsPerLine==='auto'||!S.style.charsPerLine)) rcv.textContent='自动 '+mx2+' 字';
+      }
+    }
+    if(d.kind==='styleApplied'){
+      var e=d.effective||{};
+      // 显示端回报的是**派生结果**，不能覆盖本机的 auto 开关（否则下一次下发就把 auto 锁成数字）
+      if(typeof e.charsPerLine==='number'){ S.art.effCpl=e.charsPerLine; var _rcv=$('rCharsVal'); if(_rcv && (S.style.charsPerLine==='auto'||!S.style.charsPerLine)) _rcv.textContent='自动 '+e.charsPerLine+' 字'; }
+      if(typeof e.fontSizePx==='number' && typeof e.lineHeight==='number') S.art.eff=e;
+      if(d.note) toast(d.note);
+      var _drag = document.activeElement && document.activeElement.type==='range';
+      if(S.scene==='article' && !_drag) render();
+    }
+    // Jeremyzh 21:57「板书溢出控制台不提示」+ mqtt V2.2.32：castOverflow 是 true|false 布尔、只作可观测量/诊断。
+    // 控制台刻意不读、不显示、不 toast、不角标（既不按 number、也不按 boolean 消费）；屏上滚动条本身就是提示。
+    // 若日后要 px 精度，那是「另一个字段」的立项，须开发先改协议形状（本版没有 overflowPx）。
+    if(d.kind==='castMetrics'){
+      // 不消费：本分支故意留空（只为拦住通用分支），且不更新任何状态
+    }
+  };
+
+  // ── 初始化 ──
+  renderCode();
+  $('sFont').value = (S.style.fontFamily && S.style.fontFamily.body) || 'song';
+  // V2.1.5 存量迁移：旧 fontScale 量程（0.8–2.0 → 14–36px）在大屏上全部不可用，一律重置为 72px
+  var fpx0 = cNom();
+  $('sFontSize').value = Math.max(24, Math.min(160, fpx0)); $('sLh').value = S.style.lineHeight;
+  applyCF();
+  $('cfMinus').addEventListener('click', function(){ bumpCF(-0.1); });
+  $('cfPlus').addEventListener('click', function(){ bumpCF(0.1); });
+  $('sFg').value = S.style.fg === '#dde3ec' ? '#dddddd' : S.style.fg; $('sBg').value = S.style.bg;
+  $('sAlign').value = S.style.align || 'left';
+  readStyle();
+  LS.setItem('cds.style', JSON.stringify(S.style));
+  beat(); render();
+})();
+</script>
+</body>
+</html>
