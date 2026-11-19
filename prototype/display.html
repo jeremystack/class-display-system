@@ -105,6 +105,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
 .idle .room{font-size:1.35rem;color:var(--cds-fg);letter-spacing:.12em}
 .idle .clock{font:300 4.2rem/1.2 ui-monospace,monospace;margin:2vh 0 1vh;color:rgba(255,255,255,.85)}
 .idle .wait{font-size:.8rem;letter-spacing:.14em;color:rgba(255,255,255,.35)}
+.idle .hint{margin-top:1.6vh;font-size:.72rem;line-height:1.6;letter-spacing:.06em;color:rgba(255,255,255,.3);max-width:min(46rem,80vw);text-align:center}
 
 /* ── 系统层 ── */
 #sys{position:fixed;left:0;right:0;bottom:0;padding:.7rem 1rem;background:rgba(20,22,28,.92);
@@ -704,7 +705,8 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
         var now=new Date();
         html='<div class="idle"><div class="room">主堂 · 显示终端</div><div class="clock" id="dclock">'+
           String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+'</div>'+
-          '<div class="wait">等待控制台</div></div>';
+          '<div class="wait">等待控制台</div>'+
+          '<div class="hint">换人操作：右下角长按 3 秒 → 二次确认 → 回输码页 → 输自己的 8 位码</div></div>';
       }
     } else {
       html='';
