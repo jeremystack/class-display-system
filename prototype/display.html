@@ -93,12 +93,11 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
 .body p .ln.cont{padding-left:1em}
 
 .cast{height:100%;display:flex;align-items:center;justify-content:center}
-/* V2.1.6：板书用同一 fontSizePx（删掉 min(…, 6.5vh)：6.5vh 在 1080p＝70.2px，72px 以上全无效）；
-   装不下时由 fitCast() 按步长 4 降档，并把实际生效值回报控制页——不静默缩 */
-/* V2.1.43：板书改竖向滚动（V2.1.38 反转 V2.1.34 的裁切）。scrollbar-gutter:stable 防自反馈：
-   滚动条出现 ⇒ 宽变窄 ⇒ 换行增多 ⇒ 更高 ⇒ 又要滚动条。注意这里**不动 .lyrics**——
-   歌词是 transform 视口（只动 transform），给它加滚动会与居中定位打架。 */
-.cast .paper{max-width:74vw;max-height:100%;overflow-y:auto;scrollbar-gutter:stable;overscroll-behavior:contain;font-family:var(--cds-font-body);
+/* V2.1.62（Jeremyzh 15:26 定案）：板书**不滚动、不降档、不测算**。V2.1.6 的自动降档与
+   V2.1.43 的竖向滚动一并删除——板书内容是发送端自定义控制的，老师保证每行显示
+   个数与显示行数，多出的文字手动调整发送端内容；屏端只裁切，不提供任何自动逻辑。
+   注意这里**不动 .lyrics**——歌词是 transform 视口，给它加滚动会与居中定位打架。 */
+.cast .paper{max-width:74vw;max-height:100%;overflow:hidden;font-family:var(--cds-font-body);
   font-size:var(--cds-font-size);
   line-height:var(--cds-line-height);text-align:var(--cds-align);white-space:pre-wrap}
 
@@ -115,15 +114,13 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
 
 /* ── V2.1.43 屏端隐藏退出（设计 §3.4.1）──
    热区**不可见**：不画图标、不写文案、不画环形进度（画了就等于告诉学生入口在哪）。
-   位置避开输码页 .reset-hint（右下 18px/14px）与板书滚动条轨道：贴右下角 88×88，
-   且仅在内容态启用（输码态该热区不绑动作）。 */
+   位置避开输码页 .reset-hint（右下 18px/14px）：贴右下角 88×88，
+   且仅在内容态启用（输码态该热区不绑动作）。
+   V2.1.62：板书已无滚动条（Jeremyzh 15:26 定案），V2.1.45 的「按实测轨道宽内缩」前提消失——
+   热区恒贴 right:0，不再有内缩量、也不再有坐标闸。 */
 #exit-hot{position:fixed;right:0;bottom:0;width:88px;height:88px;z-index:20;
   background:transparent;touch-action:none;user-select:none;-webkit-touch-callout:none}
 #exit-hot[hidden]{display:none}
-/* 滚动条轨道与右下角热区是同一块像素（mqtt §4.6.5 ⑮ / V2.2.32、V2.2.36）：轨道宽度**实测**、
-   内缩**无条件**（scrollbar-gutter:stable ⇒ 轨道常驻，不得写成「出现滚动条时才内缩」，否则同一块屏
-   有无溢出时能按到的地方不一样）。内缩量由 syncExitHot() 写入 right；点坐标命中轨道另有一道闸。 */
-#exit-hot{right:0}
 #exit-dlg{position:fixed;inset:0;z-index:60;background:rgba(8,10,14,.72);
   display:flex;align-items:center;justify-content:center}
 #exit-dlg[hidden]{display:none}
@@ -673,7 +670,7 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
     if(S.scene==='cast' && S.cast.castId){
       var ex=document.querySelector('#content .cast .paper');
       if(ex && ex.getAttribute('data-cast-id')===String(S.cast.castId)){
-        ex.textContent=S.cast.text||'（板书内容）'; requestAnimationFrame(fitCast); return;
+        ex.textContent=S.cast.text||'（板书内容）'; return;
       }
     }
     if(S.scene==='music'){
@@ -713,27 +710,9 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
       html='';
     }
     c.innerHTML=html;
-    requestAnimationFrame(fitCast);   // 等布局/字体生效后再量板书是否装得下
     $('content').hidden=false; $('entry').hidden=true;
     if(DEBUG) $('dbg').className='show';
     if(S.scene==='article') requestAnimationFrame(function(){ layoutArticle(); });
-  }
-
-  // V2.1.6：板书用同一 fontSizePx；装不下按步长 4 降档，并把「实际生效值」回报控制页
-  // （旧版 min(…, 6.5vh) 在 1080p 把上限锁死 70.2px，字号设 72 以上对板书全部无效）
-  function fitCast(){
-    var wrap=document.querySelector('#content .cast'); if(!wrap) return;
-    var p=wrap.querySelector('.paper'); if(!p) return;
-    var setPx=parseFloat(document.documentElement.style.getPropertyValue('--cds-font-size'))||72;
-    setPx=Math.max(24, Math.min(160, setPx));
-    var px=setPx, guard=0;
-    p.style.fontSize=px+'px';
-    while(p.scrollHeight > p.clientHeight+1 && p.clientHeight>0 && guard++<40){
-      px-=4; if(px<24){ px=24; p.style.fontSize='24px'; break; }
-      p.style.fontSize=px+'px';
-    }
-    p.setAttribute('data-eff', String(px));
-    if(BC) BC.postMessage({kind:'castMetrics', settingPx:setPx, effectivePx:px});
   }
 
   // ── 进度推进 ──
@@ -977,31 +956,19 @@ body{background:var(--cds-bg);color:var(--cds-fg);font-family:var(--cds-font-ui)
   function exitOpen(){ if(dlgOpen) return; dlgOpen=true; exitArmed=false; if(exitT){ clearTimeout(exitT); exitT=null; }
     dlg.hidden=false; var n=$('exit-no'); if(n) n.focus(); }   // 默认焦点在「取消」：连按 Enter 不得误确认
   function exitClose(){ if(!dlgOpen) return; dlgOpen=false; dlg.hidden=true; }
-  function trackWidth(){
-    // 滚动条轨道宽度＝滚动容器「占位宽－可视宽」（gutter:stable ⇒ 常驻）。
-    // 只有轨道真的贴到视口右缘时才需要内缩：原型板书 max-width:74vw 居中时，轨道不在右下角。
-    var p=document.querySelector('#content .cast .paper');
-    if(!p) return 0;
-    var w=p.offsetWidth-p.clientWidth;
-    if(!(w>0)) return 0;
-    return (window.innerWidth - p.getBoundingClientRect().right < 2) ? w : 0;
-  }
   function syncExitHot(){
     // 只在内容态启用热区：输码态右下的 .reset-hint 是「清除本地码」，同一手势不能两义（§3.4.1）
+    // V2.1.62：板书已无滚动条 ⇒ 不再按轨道宽内缩（V2.1.45 口径作废），热区恒贴 right:0。
     var on = !$('content').hidden && !!LS.getItem('cds.bound');
     hot.hidden = !on;
-    var tw = (on && S.scene==='cast') ? trackWidth() : 0;
-    hot.style.right = (tw ? tw + 2 : 0) + 'px';   // 内缩量＝实测轨道宽＋2px；无条件、不看是否溢出
-    hot.setAttribute('data-track', String(tw));
+    hot.style.right = '0px';
     document.getElementById('content').classList.toggle('cast-on', on && S.scene==='cast');
   }
   hot.addEventListener('contextmenu', function(e){ e.preventDefault(); });
   hot.addEventListener('selectstart', function(e){ e.preventDefault(); });
   hot.addEventListener('pointerdown', function(e){
     if(dlgOpen || hot.hidden) return;
-    // 命中滚动条轨道 ⇒ 不计时（轨道与热区同像素；按坐标判，防平台滚动条比内缩量更宽）
-    var tw = +(hot.getAttribute('data-track')||0);
-    if(tw && e.clientX >= window.innerWidth - tw - 2){ exitCancel(); return; }
+    // V2.1.62：板书无滚动条 ⇒ 无轨道可避让，V2.1.45 的坐标闸删除（它会把正常长按拦掉）
     e.preventDefault();
     exitX=e.clientX; exitY=e.clientY; exitArmed=true;
     exitT=setTimeout(function(){ exitT=null; if(exitArmed) exitOpen(); }, 3000);

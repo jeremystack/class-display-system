@@ -955,7 +955,8 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
       if(S.scene==='article' && !_drag) render();
     }
     // Jeremyzh 21:57「板书溢出控制台不提示」+ mqtt V2.2.32：castOverflow 是 true|false 布尔、只作可观测量/诊断。
-    // 控制台刻意不读、不显示、不 toast、不角标（既不按 number、也不按 boolean 消费）；屏上滚动条本身就是提示。
+    // 控制台刻意不读、不显示、不 toast、不角标（既不按 number、也不按 boolean 消费）。
+    // V2.1.62：板书已改回裁切、屏端无滚动条，原句「屏上滚动条本身就是提示」失效——控制台仍不得提示。
     // 若日后要 px 精度，那是「另一个字段」的立项，须开发先改协议形状（本版没有 overflowPx）。
     if(d.kind==='castMetrics'){
       // 不消费：本分支故意留空（只为拦住通用分支），且不更新任何状态
