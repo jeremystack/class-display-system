@@ -232,14 +232,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
           <option value="system-ui">系统默认</option>
         </select>
       </label>
-      <label class="field">显示端字号 <span id="sFontVal">72 px</span>
-        <input type="range" id="sFontSize" min="24" max="160" step="4" value="72">
-        <span class="hintline" id="sFontEst">—（等显示端回报）</span>
-      </label>
-
-      <label class="field">行高 <span id="sLhVal">1.75</span>
-        <input type="range" id="sLh" min="1.2" max="2.2" step="0.05" value="1.75">
-      </label>
+      <span class="hintline">字号 / 行距：阅读与板书场景内常驻滑块（V2.1.61 起移出本折叠栏；Jeremyzh 15:19 方案 A）</span>
       <label class="field">对齐
         <select id="sAlign"><option value="left">左对齐</option><option value="center">居中</option></select>
       </label>
@@ -523,6 +516,13 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
   function cplOf(){ return (S.style.charsPerLine==='auto'||!S.style.charsPerLine) ? cMax(cNom()) : Math.min(cMax(cNom()), +S.style.charsPerLine); }
   function cplLabel(){ return (S.style.charsPerLine==='auto'||!S.style.charsPerLine) ? ('自动 '+cplOf()+' 字') : (cplOf()+' 字'); }
   function cNom(){ var v=S.style.fontSizePx; return (v==='auto'||!v) ? 72 : +v; }
+  // V2.1.61：字号/行距滑块常驻阅读与板书场景（Jeremyzh 2026-11-19 15:19 方案 A：不在折叠的「显示样式」里）。
+  // 面板按场景重建 ⇒ 未渲染的场景没有这两个元素，凡读它们的地方一律 null-safe。
+  function styleSliders(rfpx, rlh){
+    var fs = (S.style.fontSizePx==='auto' ? '自动 · '+rfpx+' px' : rfpx+' px');
+    return '<label title="显示端正文字号；默认 auto＝按屏高派生，拖过即锁定">字号 <input type="range" id="sFontSize" min="24" max="160" step="4" value="'+rfpx+'"><span class="rv" id="sFontVal">'+fs+'</span></label>'+
+      '<label title="行距；拖动即下发，显示端重排后重报 pageMap">行距 <input type="range" id="sLh" min="1.2" max="2.2" step="0.05" value="'+rlh.toFixed(2)+'"><span class="rv" id="sLhVal">'+rlh.toFixed(2)+'</span></label>';
+  }
 
   // V2.1.2：顶栏常驻音乐状态条。article/cast 下音乐必为 paused（继续置灰，服务端会 409）
   function renderNP(){
@@ -618,8 +618,8 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
           (rp.viewLines?(' 显示端首屏 '+rp.viewLines+' 行。'):'')+'</div>'+
         '<div class="readbar">'+
           '<label title="每行几个字；默认 auto（按显示端屏宽÷字号），上限 24 是可读性底线">每行 <input type="range" id="rChars" min="6" max="'+cMax(rfpx)+'" step="1" value="'+cplOf()+'" data-cmax="'+cMax(rfpx)+'"><span class="rv" id="rCharsVal">'+cplLabel()+'</span>'+
-            '<em class="ro" id="rCharsMax" style="font-size:11px" title="'+cMaxSrc()+'">上限 '+cMax(rfpx)+' 字</em></label>'+
-          '<span class="todo">字号 <b id="rFontRo">'+(S.style.fontSizePx==='auto'?'自动':rfpx+'px')+'</b> · 行高 <b id="rLhRo">'+rlh.toFixed(2)+'</b>（公共属性，在底部「显示样式」控制栏调） · <b id="rLines">'+(rp.viewLines?('首屏 '+rp.viewLines+' 行'):'—（等显示端回报）')+'</b> · 每行 '+cplLabel()+' · 改一次即下发，显示端重排重发'+
+            '<em class="ro" id="rCharsMax" style="font-size:11px" title="'+cMaxSrc()+'">上限 '+cMax(rfpx)+' 字</em></label>'+styleSliders(rfpx,rlh)+
+          '<span class="todo"><b id="rLines">'+(rp.viewLines?('首屏 '+rp.viewLines+' 行'):'—（等显示端回报）')+'</b> · 每行 '+cplLabel()+' · 改一次即下发，显示端重排重发'+
             (S.art.eff?(' · <b>生效</b> 行距 '+S.art.eff.lineHeight.toFixed(2)+' / 字号 '+Math.round(S.art.eff.fontSizePx)+'px / 每行 '+S.art.eff.charsPerLine+' 字'):'')+'</span>'+
         '</div>'+
         '<div class="castbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
@@ -639,7 +639,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
               return '<option value="'+o[0]+'"'+(String(S.cast.lines)===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+
           '</select></label></div>'+
         '<textarea id="castText" placeholder="在这里写板书正文，或选择图片 / PDF…">'+esc(S.cast.draft)+'</textarea>'+
-        '<div class="castbar">'+
+        '<div class="castbar">'+styleSliders(Math.max(24,Math.min(160,cNom())), +(S.style.lineHeight||1.75).toFixed(2))+
           '<span style="margin-right:auto;color:var(--muted);font-size:12px">'+(isCoarse()
             ? '点右侧「发送」按钮 ＝ 发送<b>光标所在行及上方 N 行</b>（触屏不绑双击、不绑长按：双击会缩放/选词）'
             : '双击文本框 ＝ 发送<b>光标所在行及上方 N 行</b>；发送后 3 秒内可撤销')+'</span>'+
@@ -848,15 +848,16 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
   // ── 样式下发 ──
   var map = { song:'"Songti SC","Noto Serif SC",serif', hei:'"PingFang SC","Microsoft YaHei",sans-serif', kai:'"Kaiti SC",KaiTi,serif', 'system-ui':'system-ui,sans-serif' };
   function readStyle(){
-    var fpx = Math.max(24, Math.min(160, +$('sFontSize').value || 72));
+    var fsEl=$('sFontSize'), lhEl=$('sLh');
+    var fpx = Math.max(24, Math.min(160, fsEl ? (+fsEl.value || 72) : cNom()));
     S.style = {
       fontFamily:{ ui:'system-ui', body:$('sFont').value },
-      fontSizePx: (S.style.fontSizePx==='auto' ? 'auto' : fpx), lineHeight:+$('sLh').value,
+      fontSizePx: (S.style.fontSizePx==='auto' ? 'auto' : fpx), lineHeight: lhEl ? (+lhEl.value || 1.75) : (+S.style.lineHeight || 1.75),
       charsPerLine: (S.style.charsPerLine==='auto' ? 'auto' : Math.max(6, Math.min(cMax(fpx), +S.style.charsPerLine))),
       fg:$('sFg').value, bg:$('sBg').value, align:$('sAlign').value
     };
-    $('sFontVal').textContent = fpx + ' px';
-    $('sLhVal').textContent = S.style.lineHeight.toFixed(2);
+    var fv=$('sFontVal'); if(fv) fv.textContent = (S.style.fontSizePx==='auto' ? '自动 · '+fpx+' px' : fpx+' px');
+    var lv=$('sLhVal'); if(lv) lv.textContent = S.style.lineHeight.toFixed(2);
     // V2.1.40：面板里的只读读数随控制栏同步（控制栏是唯一入口，读数不能落后一拍）
     var _lro=$('rLhRo'); if(_lro) _lro.textContent = S.style.lineHeight.toFixed(2);
     var _fro=$('rFontRo'); if(_fro) _fro.textContent = (S.style.fontSizePx==='auto' ? '自动' : (Math.round(+S.style.fontSizePx)+'px'));
@@ -867,7 +868,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     var sm=$('styleSummary'); if(sm) sm.textContent=($('sFont').selectedOptions[0]||{}).textContent+' · '+(S.style.fontSizePx==='auto'?'字号自动':fpx+'px')+' · 行高 '+S.style.lineHeight.toFixed(2)+' · 每行 '+cplLabel();
     return S.style;
   }
-  ['sFont','sLh','sAlign','sFg','sBg'].forEach(function(id){
+  ['sFont','sAlign','sFg','sBg'].forEach(function(id){
     $(id).addEventListener('input', function(){ readStyle(); $('styleState').textContent='未下发（有改动）'; });
   });
   function publishStyle(noRender){
@@ -885,6 +886,18 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
   // 面板里只留「每行字数」，它依赖字号上限 c_max ⇒ 字号一变必须当场联动 clamp（V2.1.10 那条不能丢）。
   document.addEventListener('input', function(ev){
     var id = ev.target && ev.target.id;
+    // V2.1.61：字号/行距滑块已在阅读与板书面板里（不在折叠栏）⇒ 委托处理；拖动即下发（L421「行距常驻可控」）
+    if(id==='sFontSize' || id==='sLh'){
+      if(id==='sFontSize'){ S.style.fontSizePx = Math.max(24, Math.min(160, +ev.target.value||72)); }
+      else { S.style.lineHeight = Math.max(1.2, Math.min(2.2, +ev.target.value||1.75)); }
+      readStyle();
+      var mx0 = cMax(cNom()), rc0 = $('rChars');
+      if(rc0){ rc0.max=mx0; rc0.setAttribute('data-cmax',mx0); if(+rc0.value>mx0){ rc0.value=mx0; S.style.charsPerLine=mx0; } }
+      var rcm0=$('rCharsMax'); if(rcm0) rcm0.textContent='上限 '+mx0+' 字';
+      var rcv0=$('rCharsVal'); if(rcv0) rcv0.textContent=cplLabel();
+      publishStyle(true);
+      return;
+    }
     if(id !== 'rChars') return;
     var mx = cMax(cNom());
     var c=Math.max(6, Math.min(mx, +ev.target.value||6));
@@ -893,19 +906,7 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
     publishStyle(true);
   });
 
-  // V2.1.40：字号现在只有控制栏一个入口 ⇒ 拖动即锁定。
-  // 原来的锁值动作在文章面板的 #rFontSize 里（删掉后 auto 档拖了不会变＝看着没被控制，正是他被抱怨的那类缺陷）。
-  $('sFontSize').addEventListener('input', function(){
-    var v = Math.max(24, Math.min(160, +this.value||72));
-    S.style.fontSizePx = v;
-    readStyle(); $('styleState').textContent='未下发（有改动）';
-    var mx = cMax(v), rc = $('rChars');
-    if(rc){ rc.max=mx; rc.setAttribute('data-cmax',mx); if(+rc.value>mx){ rc.value=mx; S.style.charsPerLine=mx; } }
-    var rcm=$('rCharsMax'); if(rcm) rcm.textContent='上限 '+mx+' 字';
-    var rcv=$('rCharsVal'); if(rcv) rcv.textContent=cplLabel()+(rc&&+rc.value>=mx?'（上限）':'');
-    var fro=$('rFontRo'); if(fro) fro.textContent=v+'px';
-    var lro=$('rLhRo'); if(lro) lro.textContent=S.style.lineHeight.toFixed(2);
-  });
+  // V2.1.61：字号/行距的拖动即锁定逻辑已并入上面的委托分支（滑块在面板里，静态监听会绑到 null）。
 
   // ── 显示端回执 ──
   if(BC) BC.onmessage = function(ev){
@@ -966,7 +967,8 @@ ol.items li .mv button{min-height:22px;padding:0 5px;font-size:11px;background:t
   $('sFont').value = (S.style.fontFamily && S.style.fontFamily.body) || 'song';
   // V2.1.5 存量迁移：旧 fontScale 量程（0.8–2.0 → 14–36px）在大屏上全部不可用，一律重置为 72px
   var fpx0 = cNom();
-  $('sFontSize').value = Math.max(24, Math.min(160, fpx0)); $('sLh').value = S.style.lineHeight;
+  if($('sFontSize')) $('sFontSize').value = Math.max(24, Math.min(160, fpx0));
+  if($('sLh')) $('sLh').value = S.style.lineHeight;
   applyCF();
   $('cfMinus').addEventListener('click', function(){ bumpCF(-0.1); });
   $('cfPlus').addEventListener('click', function(){ bumpCF(0.1); });
