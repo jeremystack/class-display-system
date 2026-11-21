@@ -1,0 +1,12 @@
+{
+  "name": "class-display-system",
+  "private": true,
+  "type": "module",
+  "description": "Class Display System —— 生产源码（本仓库只含文档、原型与 src/；部署配置在运维侧）",
+  "scripts": {
+    "test": "node --test test/api/"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
