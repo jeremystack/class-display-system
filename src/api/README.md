@@ -78,7 +78,7 @@ Worker 里没有 MQTT 客户端，`EMQX` 管理 API（18083/443）运维侧目�
 
 ## 四、没做的（明确写出来，免得被当成半成品）
 
-- `POST /devices/bind`、`/devices/unbind`、`/devices/me/release`、`/control-code*`、`/auth/login` 全部**未实现**（本次只接 11-20 启动会点名的三条）。没有 `bind` 就没有 `bound` 行，`list` 现学现用只能返回空数组——这是预期的。
+- `POST /devices/bind`、`/devices/unbind`、`/devices/me/release`、`control-code*`、`/auth/login` 全部**未实现**（本次只接 11-20 启动会点名的三条）。没有 `bind` 就没有 `bound` 行，`list` 现学现用只能返回空数组——这是预期的。
 - `list` 的 `nowPlaying` 恒 `null`：`state.report` 的落库（`playback_state`）不在本次范围。
 - 没有 wrangler 配置改动：`wrangler.toml` 属运维侧；新增绑定需求见 B-2/B-3。
 - 没有 `aud`/`iss` 校验：`§0.1` 未定义，加了会与现有签发端不兼容；等文档补。
@@ -91,6 +91,6 @@ Worker 里没有 MQTT 客户端，`EMQX` 管理 API（18083/443）运维侧目�
 |---|---|---|---|
 | 2 | 控制码 8 位数字 | `rg -c 'control_codes' src/` ≥1 | `routes/devices-me.js`（`SELECT 1 FROM control_codes …`） |
 | 3 | 绑定有效性只凭设备凭据 | `rg -c '/devices/me' src/` ≥1 | `index.js` 路由表 + `routes/devices-me.js` |
-| 4 | 无「按码查状态」公开接口 | `rg -c '/control-code' src/` ≥1 | **尚未成立**（`/control-code` 未实现，本次范围外） |
+| 4 | 无「按码查状态」公开接口 | 附录 I #4 的 `src/` 锚点 | **尚未成立**（该接口本次未实现，属范围外） |
 
 ⚠️ 分母**不因本分支变化**：`src/` 未并入 main 之前，33 条 `src/` 判据仍记「未可执行」，可判分母仍是 **238**；也不存在 242（242 是「只扣 33 条、没扣 4 条 P2」的旧算法，已被 V2.1.59 ④ 否掉）。
