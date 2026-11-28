@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CDS 显示端原型 V2.2-1128（输码 / 待机 / 内容）</title>
+<style>
+:root{
+  --bg:#000; --fg:#e8ecf2; --muted:#a9b3c2; --accent:#8ab4f8; --surface:#101318;
+  --font-ui:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --font-body:"Songti SC","Noto Serif SC",serif;
+  --art-fs:72px; --art-lh:1.75; --cast-fs:72px; --cast-lh:1;
+  --scrim:linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,.62));
+}
+body.day{
+  --bg:#faf5ea; --fg:#1f232b; --muted:#5b6270; --accent:#1d4ed8; --surface:#fffdf8;
+  --scrim:linear-gradient(180deg,rgba(255,252,244,.10),rgba(255,250,240,.26));
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-ui);user-select:none;-webkit-user-select:none;
+  -webkit-touch-callout:none;touch-action:manipulation;transition:background .2s ease,color .2s ease}
+.view{position:fixed;inset:0;display:flex;flex-direction:column}
+.view[hidden]{display:none}
+#content[hidden]{display:none}
+
+/* ── 输码态 ── */
+#entry{align-items:center;justify-content:center;text-align:center;padding:6vh 6vw}
+.entry-inner{width:min(520px,88vw)}
+.entry-inner h1{font-size:1.6rem;margin:0 0 .4rem;font-weight:600;letter-spacing:.05em}
+.entry-inner p{color:var(--muted);margin:0 0 2rem;font-size:.9rem;line-height:1.7}
+.digits{display:flex;gap:12px;justify-content:center;margin-bottom:1.4rem}
+.digits input{width:min(62px,12vw);height:min(88px,17vw);text-align:center;font:600 min(2.4rem,7vw)/1 ui-monospace,Menlo,monospace;
+  color:var(--fg);background:color-mix(in srgb,var(--fg) 6%,transparent);border:2px solid color-mix(in srgb,var(--fg) 22%,transparent);
+  border-radius:12px;outline:none}
+.digits input:focus{border-color:var(--accent);background:color-mix(in srgb,var(--fg) 10%,transparent)}
+button.go{font:600 1.05rem/1 var(--font-ui);padding:1rem 3rem;border-radius:999px;border:none;background:var(--accent);color:#06101f;cursor:pointer;min-height:52px}
+.err{color:#d94848;font-size:.85rem;min-height:1.4rem;margin-top:1rem}
+.reset-hint{position:absolute;right:18px;bottom:14px;font-size:12px;color:color-mix(in srgb,var(--fg) 30%,transparent)}
+
+/* ── 内容态 ── */
+#content{padding:5vh 5vw;min-height:0}
+
+/* 待机 */
+.standby{position:absolute;inset:0;overflow:hidden}
+.standby .bgimg{position:absolute;inset:0;background-position:center;background-repeat:no-repeat}
+.standby .scrim{position:absolute;inset:0;background:var(--scrim)}
+.standby .idle{position:relative;z-index:2;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted)}
+.idlecard{display:flex;flex-direction:column;align-items:center;padding:3.2vh 4.2vw;border-radius:22px}
+body.day .idlecard{background:rgba(255,253,247,.82);box-shadow:0 10px 40px rgba(120,100,60,.12)}
+.idle .room{font-size:1.35rem;color:var(--fg);letter-spacing:.12em}
+.idle .clock{font:300 4.2rem/1.2 ui-monospace,Menlo,monospace;margin:2vh 0 1vh;color:var(--fg);opacity:.9}
+.idle .wait{font-size:.8rem;letter-spacing:.14em;color:var(--muted)}
+.idle .hint{margin-top:1.6vh;font-size:.72rem;line-height:1.6;letter-spacing:.06em;color:var(--muted);max-width:min(46rem,80vw);text-align:center}
+/* 黑屏：Jeremyzh 2026-11-28 16:52 裁决——白天/夜间两主题下恒纯黑，
+   不引主题变量、不被 body.day 覆盖，且该分支不渲染任何文字 */
+.standby .black{position:absolute;inset:0;background:#000}
+
+/* 音乐 */
+.music{position:absolute;inset:0;padding:6vh 4vw 9vh;display:flex;flex-direction:column;align-items:center;text-align:center}
+.music .t{font-size:1.5rem;font-weight:600;letter-spacing:.04em}
+.music .sub{color:var(--muted);font-size:.8rem;margin-top:.5rem}
+/* 歌名上滚进入歌词：只在「歌名卡 → 歌词」这一刻播一次 */
+.music .mroll{position:absolute;left:0;right:0;top:30vh;text-align:center;pointer-events:none;z-index:5}
+.music .mroll .rt{font-size:1.4rem;font-weight:600;letter-spacing:.04em;color:var(--fg)}
+@keyframes rollUp{ 0%{transform:translateY(0) scale(1);opacity:1} 55%{opacity:.85} 100%{transform:translateY(-34vh) scale(.62);opacity:0} }
+@keyframes lyrIn{ from{transform:translateY(26px)} to{transform:none} }
+.music.rolling .mroll{animation:rollUp .95s cubic-bezier(.33,.72,.2,1) forwards}
+.music.rolling .lyrics{animation:lyrIn .95s cubic-bezier(.33,.72,.2,1) both}
+.music.titlecard{justify-content:center}
+.music.titlecard .mcard{animation:cardIn .28s ease both}
+@keyframes cardIn{ from{transform:translateY(10px)} to{transform:none} }
+.lyrics{flex:1;min-height:0;width:100%;overflow:hidden;position:relative;margin-top:3vh;display:flex;align-items:center;justify-content:center}
+.lyrics .track{position:absolute;left:0;right:0;top:0;transition:transform .35s ease;will-change:transform}
+.lyric{font-size:var(--lyr-fs,56px);line-height:var(--art-lh);color:color-mix(in srgb,var(--fg) 32%,transparent);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0}
+.lyric.cur{color:var(--accent)}
+/* 歌名卡：点播放后、歌词第一行出现前，居中放大显示歌名（甲-3） */
+.mcard{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:6vh 4vw}
+.mcard .name{font-weight:700;letter-spacing:.02em;line-height:1.25;white-space:nowrap;color:var(--fg)}
+.mcard .sub2{margin-top:3vh;color:color-mix(in srgb,var(--fg) 62%,transparent);font-size:clamp(14px,1.15rem,22px);letter-spacing:.08em}
+.progress{position:absolute;left:5vw;right:5vw;bottom:4vh;height:4px;background:color-mix(in srgb,var(--fg) 16%,transparent);border-radius:99px}
+.progress i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .25s linear}
+
+/* 文章（按容量分页） */
+.article{position:absolute;inset:0;padding:5vh 5vw;display:flex;flex-direction:column}
+.article .head{color:var(--muted);font-size:.8rem;letter-spacing:.06em;margin-bottom:2.2vh;flex:none}
+.article .head b{color:var(--fg);font-size:1rem;margin-right:.8rem}
+.article .body{flex:1;min-height:0;overflow:hidden;position:relative;padding-left:1em;margin-left:-1em;
+  font-family:var(--font-body);font-size:var(--art-fs);line-height:var(--art-lh);text-align:left}
+.article .body p{margin:0 0 1.1em;position:relative}
+.article .body .sn{color:var(--muted);font-size:.6em;font-family:var(--font-ui);line-height:1;position:absolute;right:100%;top:.34em;margin-right:.14em}
+.article .body p .ln{display:block;white-space:nowrap;overflow:hidden}
+.article .body p .ln.cont{padding-left:0}   /* 换行行与首行齐左：不悬挂缩进 */
+/* 窄屏（竖屏/小屏）：左侧留给节号的空间不足 1 字，节号改行内，避免被屏幕边缘裁掉；
+   换行行仍与首行齐左 */
+@media (max-width:640px){
+  .article .body{padding-left:0;margin-left:0}
+  .article .body .sn{position:static;margin-right:.22em;font-size:.5em;vertical-align:.32em}
+  /* 窄屏不再按 cpl 硬切行：交给浏览器自然折行，节号与首行同行、换行齐左 */
+  .article .body p .ln{display:inline;white-space:normal;overflow:visible}
+}
+.article .foot{flex:none;display:flex;justify-content:flex-end;font-size:.68rem;opacity:.55;min-height:1.4em}
+
+/* 板书（只裁切、不滚动） */
+.cast{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+.cast .paper{max-width:74vw;max-height:100%;overflow:hidden;font-family:var(--font-body);
+  font-size:var(--cast-fs);line-height:var(--cast-lh);white-space:pre-wrap;text-align:left}
+
+/* 系统层 */
+#sys{position:fixed;left:0;right:0;bottom:0;padding:.7rem 1rem;background:rgba(20,22,28,.92);border-top:1px solid rgba(255,255,255,.12);
+  font-size:.8rem;color:#ffd9a0;display:none;z-index:50}
+#sys.show{display:block}
+#sys.bad{background:rgba(58,20,20,.94);color:#ffd7d7}
+
+/* 隐藏退出热区 */
+#exit-hot{position:fixed;right:0;bottom:0;width:88px;height:88px;z-index:20;background:transparent;touch-action:none}
+#exit-hot[hidden]{display:none}
+#exit-dlg{position:fixed;inset:0;z-index:60;background:rgba(8,10,14,.72);display:flex;align-items:center;justify-content:center}
+#exit-dlg[hidden]{display:none}
+#exit-dlg .dlg{background:#171b22;border:1px solid rgba(255,255,255,.16);border-radius:14px;padding:2rem 2.2rem;max-width:min(460px,86vw);text-align:center;color:#e8ecf2}
+#exit-dlg h2{margin:0 0 .6rem;font-size:1.15rem;font-weight:600}
+#exit-dlg p{margin:0 0 1.6rem;color:#a9b3c2;font-size:.9rem;line-height:1.7}
+#exit-dlg .row{display:flex;gap:.8rem;justify-content:center}
+#exit-dlg button{font:600 .95rem/1 var(--font-ui);padding:.8rem 1.6rem;border-radius:10px;border:1px solid rgba(255,255,255,.22);
+  background:transparent;color:#e8ecf2;cursor:pointer;min-height:48px}
+#exit-dlg button.danger{border-color:#a33;background:#3a1414;color:#ffd7d7}
+#dbg{position:fixed;right:10px;top:10px;font:11px/1.5 ui-monospace,monospace;color:rgba(255,255,255,.45);text-align:right;display:none}
+#dbg.show{display:block}
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <section class="view" id="entry">
+    <div class="entry-inner">
+      <h1>教室显示</h1>
+      <p>请输入控制台上的 6 位控制码<br>（首次使用一次，之后开机自动连上）</p>
+      <div class="digits" id="digits">
+        <input inputmode="numeric" maxlength="1" autocomplete="off">
+        <input inputmode="numeric" maxlength="1" autocomplete="off">
+        <input inputmode="numeric" maxlength="1" autocomplete="off">
+        <input inputmode="numeric" maxlength="1" autocomplete="off">
+        <input inputmode="numeric" maxlength="1" autocomplete="off">
+        <input inputmode="numeric" maxlength="1" autocomplete="off">
+      </div>
+      <button class="go" id="go">确认</button>
+      <div class="err" id="err"></div>
+    </div>
+    <span class="reset-hint" id="resetHint">长按 3 秒清除本地码</span>
+  </section>
+
+  <section class="view" id="content" hidden></section>
+
+  <div id="exit-hot" hidden aria-hidden="true"></div>
+  <div id="exit-dlg" hidden role="dialog" aria-modal="true">
+    <div class="dlg">
+      <h2>确定解除本屏接管？</h2>
+      <p>解除后需重新输入控制码。</p>
+      <div class="row"><button id="exit-no" type="button">取消</button><button id="exit-yes" type="button" class="danger">解除接管</button></div>
+    </div>
+  </div>
+  <div id="sys"></div>
+  <div id="dbg"></div>
+</div>
+<script>
+(function(){
+  'use strict';
+  var LS = window.localStorage;
+  var BC = null; try{ if('BroadcastChannel' in window) BC = new BroadcastChannel('cds-proto'); }catch(e){ BC = null; }
+  var $ = function(id){ return document.getElementById(id); };
+  var DEBUG = /[?&]debug=1/.test(location.search);
+  function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function fmt(ms){ var s=Math.max(0,Math.floor(ms/1000)); return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
+  function sys(text,bad,ms){ var el=$('sys'); el.textContent=text; el.className='show'+(bad?' bad':'');
+    clearTimeout(sys._t); if(ms) sys._t=setTimeout(function(){ el.className=''; },ms); }
+
+  var LYRICS = ['宇宙广阔无垠','我心灵得安宁','如海洋般深沉','主恩典够我用','我安然躺卧',
+    '他使我灵魂苏醒','引我走义路','我虽行过死荫幽谷','也不怕遭害','因你与我同在',
+    '你的杖你的竿','都安慰我','在我敌人面前','你为我摆设筵席','你用油膏了我的头',
+    '使我的福杯满溢','我一生一世','必有恩惠慈爱随着我','我且要住在','耶和华的殿中',
+    '直到永远','哈利路亚','赞美主名','阿们'];
+  // 歌词对象：{t 词, at 起始毫秒}；控制端会把逐句时间码一起发来（未打点则按等分兜底）
+  function normLy(arr, dur){
+    if(!arr || !arr.length) return null;
+    var n=arr.length, d=dur||245000;
+    return arr.map(function(o,i){
+      return (typeof o==='string') ? {t:o, at:Math.round(i*d/n)} : {t:String(o.t||''), at:Math.max(0,+o.at||0)};
+    }).sort(function(a,b){ return a.at-b.at; });
+  }
+  function seedLy(dur){
+    var d=dur||245000, n=LYRICS.length;
+    return LYRICS.map(function(t,i){ return {t:t, at:Math.round(i*d/n)}; });
+  }
+  var VERSES = {
+    23:[['1','耶和华是我的牧者，我必不致缺乏。'],['2','他使我躺卧在青草地上，领我在可安歇的水边。'],['3','他使我的灵魂苏醒，为自己的名引导我走义路。'],['4','我虽然行过死荫的幽谷，也不怕遭害，因为你与我同在。'],['5','在我敌人面前，你为我摆设筵席；你用油膏了我的头，使我的福杯满溢。'],['6','我一生一世必有恩惠慈爱随着我，我且要住在耶和华的殿中，直到永远。']],
+    3:[['1','此后，约伯开口咒诅自己的生日。'],['2','说：愿我生的那日和说怀了男胎的那夜都灭没。'],['3','愿那日变为黑暗；愿神不从上面寻找它。']]
+  };
+
+  function load(k,d){ try{ var v=LS.getItem(k); return v?JSON.parse(v):d; }catch(e){ return d; } }
+
+  // 原型经文样例：仅诗篇 23 / 约伯记 3 为真实文本，其余按章号生成占位节
+  function chapSections(book, ch){
+    ch=+ch||1;
+    if(book==='诗篇' && ch===23) return VERSES[23].map(function(v){ return {sn:v[0], text:v[1]}; });
+    if(book==='约伯记' && ch===3) return VERSES[3].map(function(v){ return {sn:v[0], text:v[1]}; });
+    var n=3+((ch*7)%10), out=[];
+    for(var i=1;i<=n;i++) out.push({sn:String(i), text:'（原型占位）'+book+' '+ch+' 章第 '+i+' 节；真实经文由 wenzhang_verses 提供。'});
+    return out;
+  }
+
+  var S = {
+    theme: LS.getItem('cds.v1128.theme') || 'night',
+    scene: 'standby',
+    standby: { mode:'theme', bg:{kind:'image', src:'', fit:'cover'} },
+    music: { idx:0, playing:false, pos:0, dur:245000, title:'', label:'', fs:24, lyrics:LYRICS, at:0,
+             ly:null, stage:'bg', lastStage:'', bg:null },
+    article: { active:false, idx:0, sec:0, title:'', sections:[], cpl:14, fs:72, lh:1.75 },
+    cast: { active:false, text:'', fs:72, lh:1 }
+  };
+
+  // 从控制端落盘的快照恢复（独立打开 display.html 也能看到最近状态）
+  (function restore(){
+    try{
+      var sb=load('cds.v1128.standby',null);
+      if(sb && sb.items && sb.items.length){ var it=sb.items[sb.sel]||sb.items[0];
+        S.standby={mode:(it.kind==='black'?'blank':'theme'), bg:{kind:it.kind,src:it.src||'',fit:it.fit||'cover'}}; }
+      var mu=load('cds.v1128.music',null);
+      if(mu){ S.music.idx=mu.idx||0; S.music.pos=mu.pos||0; S.music.items=mu.items||[]; S.music.title=((mu.items||[])[mu.idx]||{}).t||'';
+        S.music.dur=((mu.items||[])[mu.idx]||{}).dur||245000; S.music.fs=mu.fs||24; }
+      if(!S.music.ly) S.music.ly=seedLy(S.music.dur);
+      var ar=load('cds.v1128.article',null);
+      if(ar){
+        S.article.idx=ar.idx||0; S.article.sec=ar.sec||0; S.article.cpl=ar.cpl||14; S.article.fs=ar.fs||72; S.article.lh=ar.lh||1.75;
+        var items=ar.items||[{t:'诗篇 23 章',ch:23}]; var it2=items[S.article.idx]||items[0];
+        var ch=it2.ch||23;
+        S.article.sections=chapSections(it2.v||'诗篇', ch);
+        S.article.title=it2.t||'';
+      }
+      var ca=load('cds.v1128.cast',null);
+      if(ca){ S.cast.text=ca.text||''; S.cast.fs=ca.fs||72; S.cast.lh=ca.lh||1; }
+    }catch(e){}
+  })();
+
+  function setTheme(t){
+    S.theme = (t==='day'?'day':'night');
+    document.body.className = S.theme;
+    try{ LS.setItem('cds.v1128.theme', S.theme); }catch(e){}
+  }
+  setTheme(S.theme);
+
+  // ── 绑定 / 输码 ──
+  var inputs=[].slice.call(document.querySelectorAll('#digits input'));
+  function codeValue(){ return inputs.map(function(i){ return i.value; }).join(''); }
+  inputs.forEach(function(inp,i){
+    inp.addEventListener('input', function(){
+      inp.value=inp.value.replace(/\D/g,'').slice(0,1);
+      if(inp.value && i<inputs.length-1) inputs[i+1].focus();
+      if(codeValue().length===6) confirmCode();
+    });
+    inp.addEventListener('keydown', function(e){
+      if(e.key==='Backspace' && !inp.value && i>0){ inputs[i-1].focus(); inputs[i-1].value=''; e.preventDefault(); }
+      if(e.key==='Enter') confirmCode();
+    });
+    inp.addEventListener('paste', function(e){
+      var t=(e.clipboardData||window.clipboardData).getData('text').replace(/\D/g,'').slice(0,6);
+      if(t){ e.preventDefault(); t.split('').forEach(function(ch,k){ if(inputs[k]) inputs[k].value=ch; }); (inputs[Math.min(t.length,5)]||inputs[5]).focus(); }
+    });
+  });
+  function confirmCode(){
+    var v=codeValue();
+    if(v.length!==6){ $('err').textContent='请输入 6 位数字'; return; }
+    var real=LS.getItem('cds.v1128.code');
+    if(real && v!==real){ $('err').textContent='控制码不对，请再看一眼控制台'; return; }
+    $('err').textContent='';
+    try{ LS.setItem('cds.bound','1'); }catch(e){}
+    showContent();
+    post({kind:'ackBound', deviceId:deviceId(), label:'教室屏幕'});
+    sys('已接管', false, 1600);
+  }
+  $('go').addEventListener('click', confirmCode);
+
+  function deviceId(){
+    try{
+      var id=LS.getItem('cds.v1128.deviceId');
+      if(!id){ id='dev_'+Math.random().toString(36).slice(2,8); LS.setItem('cds.v1128.deviceId', id); }
+      return id;
+    }catch(e){ return 'dev_local'; }
+  }
+  function showContent(){
+    $('entry').hidden=true; $('content').hidden=false;
+    $('exit-hot').hidden=false;
+    render();
+  }
+  function showEntry(){
+    $('entry').hidden=false; $('content').hidden=true; $('exit-hot').hidden=true;
+    inputs.forEach(function(i){ i.value=''; }); inputs[0].focus();
+  }
+
+  function post(msg){ try{ if(BC) BC.postMessage(msg); }catch(e){} }
+
+  // ── 渲染 ──
+  function render(){
+    if(LS.getItem('cds.bound')===null) return;
+    var c=$('content'), html='';
+    if(S.scene==='standby'){
+      if(S.standby.mode==='blank' || (S.standby.bg && S.standby.bg.kind==='black')){
+        html='<div class="standby"><div class="black"></div></div>';   // 纯黑：不出现任何文字
+      } else {
+        var bg=S.standby.bg||{};
+        var bgStyle = bg.src ? ('background-image:url(\''+bg.src+'\');background-size:'+(bg.fit==='contain'?'contain':'cover')+';') : '';
+        html='<div class="standby"><div class="bgimg" style="'+bgStyle+'"></div><div class="scrim"></div>'
+          +'<div class="idle"><div class="idlecard"><div class="room">主堂 · 显示终端</div>'
+          +'<div class="clock" id="dclock">'+clockText()+'</div>'
+          +'<div class="wait">等待控制台</div>'
+          +'<div class="hint">换人操作：右下角长按 3 秒 → 二次确认 → 回输码页 → 输自己的 6 位码</div></div></div></div>';
+      }
+      c.innerHTML=html;
+    } else if(S.scene==='music'){
+      var dur=S.music.dur||245000, fs=lyricFs(), cur=curLine();
+      var stage=S.music.stage||'lyric';
+      if(stage==='bg'){
+        // 切歌后：投屏只显示当前「待机」选中的背景（无字、无卡）
+        var bg=S.music.bg||{};
+        var bs = bg.src ? ('background-image:url(\''+bg.src+'\');background-size:'+(bg.fit==='contain'?'contain':'cover')+';') : '';
+        html = (bg.kind==='black')
+          ? '<div class="standby"><div class="black"></div></div>'
+          : '<div class="standby"><div class="bgimg" style="'+bs+'"></div><div class="scrim"></div></div>';
+      } else if(stage==='title'){
+        // 点控制端歌词标题：投屏出歌名卡
+        var nm=S.music.label||S.music.title||'';
+        var nf=Math.max(32, Math.min(Math.round(fs*1.2),
+          Math.floor(((window.innerWidth||1920)*0.92)/Math.max(1,nm.length))));
+        html='<div class="music titlecard"><div class="mcard">'
+          +'<div class="name" style="font-size:'+nf+'px">'+esc(nm)+'</div>'
+          +'<div class="sub2">准备好后点播放，歌名上滚进入歌词</div></div></div>'
+          +'<div class="progress"><i id="pbar" style="width:0%"></i></div>';
+      } else {
+        var roll=(S.music.prevStage==='title');
+        var L=S.music.ly||seedLy(dur);
+        html='<div class="music'+(roll?' rolling':'')+'">'
+          +(roll?'<div class="mroll"><div class="rt">'+esc(S.music.label||S.music.title||'')+'</div></div>':'')
+          +'<div class="t">'+esc(S.music.title||'')+'</div>'
+          +'<div class="sub">'+(S.music.playing?'正在播放':'已暂停')+'</div>'
+          +'<div class="lyrics" id="lrc" style="--lyr-fs:'+fs+'px"><div class="track" id="ltrk">'
+          +L.map(function(o,i){ return '<div class="lyric'+(i===cur?' cur':'')+'">'+esc(o.t)+'</div>'; }).join('')
+          +'</div></div></div>'
+          +'<div class="progress"><i id="pbar" style="width:'+Math.min(100,(S.music.pos/dur)*100).toFixed(1)+'%"></i></div>';
+      }
+      c.innerHTML=html;
+      if(stage==='lyric') requestAnimationFrame(centerLyrics);
+      // 动画播完再把 prevStage 归位（不依赖重绘）
+      if(roll){ clearTimeout(S.music._rollT);
+        S.music._rollT=setTimeout(function(){
+          S.music.prevStage='lyric';
+          var rl=document.querySelector('.mroll'), mu=document.querySelector('.music.rolling');
+          if(mu) mu.classList.remove('rolling');
+          if(rl) rl.remove();          // 兜底：动画时间线被冻结也不会留残影
+        }, 1100); }
+    } else if(S.scene==='article'){
+      renderArticle(c);
+    } else if(S.scene==='cast'){
+      c.innerHTML='<div class="cast"><div class="paper" style="font-size:'+S.cast.fs+'px;line-height:'+S.cast.lh+'">'+esc(S.cast.text||'（板书内容）')+'</div></div>';
+    }
+    c.hidden=false; $('entry').hidden=true; $('exit-hot').hidden=false;
+    if(DEBUG) $('dbg').className='show';
+  }
+
+  function clockText(){
+    var n=new Date();
+    return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
+  }
+  setInterval(function(){ var e=$('dclock'); if(e) e.textContent=clockText(); }, 10000);
+
+  // ── 歌词：只显示一屏行数，当前行居中 ──
+  // 投屏歌词字号（甲-1）：F0 = 屏宽×0.92 ÷ 最长行字数；k = 0.55 + (控制端字号−20)/28×0.45
+  function longestEm(){
+    var n=1, L=S.music.ly||seedLy(S.music.dur);
+    L.forEach(function(o){ var l=(o.t||'').length; if(l>n) n=l; });
+    return n;
+  }
+  function baseLyricFs(){
+    return Math.floor(((window.innerWidth||1920)*0.92)/longestEm());
+  }
+  function lyricFs(){
+    var k=0.55+((Math.max(20,Math.min(48,(S.music.fs||24)))-20)/28)*0.45;
+    return Math.max(32, Math.min(140, Math.round(baseLyricFs()*k)));
+  }
+  // 歌名卡改由 stage='title' 触发（控制端点标题）；不再按进度插播
+  function curLine(){
+    var L=S.music.ly||seedLy(S.music.dur), pos=S.music.pos||0, k=0;
+    for(var i=0;i<L.length;i++){ if((L[i].at||0)<=pos) k=i; else break; }
+    return Math.max(0, Math.min(Math.max(0,L.length-1), k));
+  }
+  function centerLyrics(){
+    var box=$('lrc'), tr=$('ltrk'); if(!box||!tr) return;
+    var cur=curLine();
+    var kids=tr.children; if(!kids.length) return;
+    var lh=kids[0].offsetHeight||1;
+    // 只显示「整数个」一屏行数：半个字都不露（V2.2 §16.3）
+    var n=Math.max(1, Math.floor(box.clientHeight/lh));
+    var start=Math.max(0, Math.min(kids.length-n, cur-Math.floor(n/2)));
+    for(var i=0;i<kids.length;i++){
+      kids[i].style.display=(i>=start && i<start+n)?'':'none';
+      kids[i].className='lyric'+(i===cur?' cur':'');
+    }
+    tr.style.transform='none';
+  }
+
+  // ── 文章：按投屏端容量分页，选中节必须在第一行 ──
+  function charW(ch){ return ch.charCodeAt(0)<128?0.5:1; }
+  function splitHang(text,c){
+    var out=[],cur='',acc=0,lim=c;
+    for(var i=0;i<text.length;i++){
+      var w=charW(text.charAt(i));
+      if(cur && acc+w>lim+1e-9){ out.push(cur); cur=''; acc=0; lim=c; }   // 齐左后续行也用满 c 字，不再少算 1 字
+      cur+=text.charAt(i); acc+=w;
+    }
+    out.push(cur); return out;
+  }
+  function renderArticle(c){
+    var a=S.article;
+    c.innerHTML='<div class="article"><div class="head"><b>'+esc(a.title||'')+'</b><span id="pgInfo"></span></div>'
+      +'<div class="body" id="artBody" style="font-size:'+a.fs+'px;line-height:'+a.lh+'"></div>'
+      +'<div class="foot" id="artFoot"></div></div>';
+    var body=$('artBody'); var availH=body.clientHeight||600;
+    var lineH=a.fs*a.lh, gap=1.1*a.fs;
+    var secs=a.sections.length?a.sections:[{sn:'1',text:''}];
+    var start=Math.max(0,Math.min(secs.length-1,a.sec||0));
+    var out=[], y=0;
+    for(var i=start;i<secs.length;i++){
+      var ls=splitHang(secs[i].text, a.cpl||14);
+      var need=ls.length*lineH + (out.length?gap:0);
+      if(out.length && y+need>availH+1) break;
+      out.push({i:i, ls:ls}); y+=need;
+      if(y>availH) break;
+    }
+    body.innerHTML=out.map(function(o){
+      return '<p data-sec="'+o.i+'"><span class="sn">'+esc(secs[o.i].sn)+'</span>'
+        +o.ls.map(function(l,k){ return '<span class="ln'+(k?' cont':'')+'">'+esc(l)+'</span>'; }).join('')+'</p>';
+    }).join('');
+    var info=$('pgInfo'); if(info) info.textContent='第 '+(a.from||1)+'–'+(a.to||secs.length)+' 节 / 共 '+(a.total||secs.length)+' 节 · 本节起 '+out.length+' 节';
+    var foot=$('artFoot'); if(foot) foot.textContent='按屏容量分页 · 选中节在第一行';
+  }
+
+  // ── 进度推进 ──
+  setInterval(function(){
+    if(S.scene!=='music' || !S.music.playing) return;
+    S.music.pos += 250;
+    if(S.music.pos >= (S.music.dur||245000)){ S.music.pos=0; }
+    var bar=$('pbar'); if(bar) bar.style.width=Math.min(100,(S.music.pos/(S.music.dur||245000))*100).toFixed(1)+'%';
+    var cur=curLine();
+    if(cur!==S.music.lastCur){
+      S.music.lastCur=cur;
+      var tr=$('ltrk');
+      if(tr){ [].slice.call(tr.children).forEach(function(el,i){ el.className='lyric'+(i===cur?' cur':''); }); centerLyrics(); }
+    }
+    if(DEBUG) $('dbg').textContent='scene='+S.scene+' pos='+fmt(S.music.pos);
+  },250);
+
+  // ── 消息 ──
+  function handle(d){
+    if(!d || !d.kind) return;
+    if(d.kind==='theme'){ setTheme(d.theme); if(S.scene==='standby') render(); return; }
+    if(d.kind==='standby' && S.scene==='music' && S.music.stage==='bg'){
+      // 切歌时控制端先发待机背景：音乐场景的 bg 态跟着换背景
+      S.music.bg={kind:d.bg&&d.bg.kind||'image', src:(d.bg&&d.bg.src)||'', fit:(d.bg&&d.bg.fit)||'cover'};
+      render(); return;
+    }
+    if(d.kind==='standby'){
+      S.standby={ mode:d.mode||'theme', bg:d.bg||{kind:'black'} };
+      if(S.scene==='standby') render();
+      return;
+    }
+    if(d.kind==='scene'){
+      S.scene=d.scene||'standby';
+      render();
+      return;
+    }
+    if(d.kind==='music'){
+      S.music.playing=!!d.playing;
+      S.music.pos=+d.pos||0;
+      S.music.idx=+d.idx||0;
+      if(d.title) S.music.title=d.title;
+      if(d.dur) S.music.dur=d.dur;
+      if(d.lyrics && d.lyrics.length){
+        S.music.lyrics=d.lyrics;
+        var nl=normLy(d.lyrics, S.music.dur); if(nl) S.music.ly=nl;
+      }
+      if(d.fs) S.music.fs=+d.fs;
+      if(d.label) S.music.label=d.label;
+      if(d.stage && d.stage!==S.music.stage){ S.music.prevStage=S.music.stage; S.music.stage=d.stage; }
+      if(d.bg) S.music.bg=d.bg;
+      if(S.scene!=='music'){ S.scene='music'; }
+      render();
+      return;
+    }
+    if(d.kind==='article'){
+      S.article.active=d.active!==false;
+      S.article.idx=+d.idx||0;
+      S.article.sec=+d.sec||0;
+      if(d.title) S.article.title=d.title;
+      if(d.sections && d.sections.length) S.article.sections=d.sections;
+      if(d.cpl) S.article.cpl=+d.cpl;
+      if(d.fs) S.article.fs=+d.fs;
+      if(d.lh) S.article.lh=+d.lh;
+      if(d.from) S.article.from=+d.from;
+      if(d.to!==undefined) S.article.to=+d.to;
+      if(d.total) S.article.total=+d.total;
+      S.scene='article';
+      render();
+      return;
+    }
+    if(d.kind==='cast'){
+      S.cast.active=d.active!==false;
+      S.cast.text=d.text||'';
+      if(d.fs) S.cast.fs=+d.fs;
+      if(d.lh) S.cast.lh=+d.lh;
+      S.scene = S.cast.active ? 'cast' : 'standby';
+      render();
+      return;
+    }
+    if(d.kind==='bindState' && d.state==='revoked'){
+      try{ LS.removeItem('cds.bound'); }catch(e){}
+      showEntry();
+      sys('本屏已被解除接管', true, 3000);
+      return;
+    }
+  }
+  if(BC) BC.onmessage=function(ev){ handle(ev.data); };
+
+  // 无 BroadcastChannel 时（file:// 等）用 localStorage 顶替
+  var lastT=0;
+  setInterval(function(){
+    try{
+      var raw=LS.getItem('cds.v1128.last'); if(!raw) return;
+      var o=JSON.parse(raw); if(o && o.t>lastT){ lastT=o.t; handle(o.msg); }
+    }catch(e){}
+  }, 420);
+
+  // 心跳：让控制台区分「在线（注册在册）」与「已连接（MQTT）」
+  setInterval(function(){
+    if(LS.getItem('cds.bound')===null) return;
+    post({kind:'presence', deviceId:deviceId()});
+    try{ LS.setItem('cds.v1128.presence', String(Date.now())); }catch(e){}
+  }, 2000);
+
+  // ── 隐藏退出热区：长按 3 秒 → 二次确认 ──
+  (function(){
+    var hot=$('exit-hot'), dlg=$('exit-dlg'), t=null, fired=false;
+    function start(e){ fired=false; t=setTimeout(function(){ fired=true; dlg.hidden=false; }, 3000); }
+    function stop(){ clearTimeout(t); }
+    hot.addEventListener('pointerdown', start);
+    ['pointerup','pointerleave','pointercancel'].forEach(function(k){ hot.addEventListener(k, stop); });
+    $('exit-no').addEventListener('click', function(){ dlg.hidden=true; });
+    $('exit-yes').addEventListener('click', function(){
+      dlg.hidden=true;
+      try{ LS.removeItem('cds.bound'); }catch(e){}
+      post({kind:'unbound'}); showEntry(); sys('已解除接管，请输码', false, 2500);
+    });
+  })();
+
+  // ── 演示深链 ──
+  (function(){
+    var m=/[?&]scene=(standby|music|article|cast)/.exec(location.search);
+    try{ if(!LS.getItem('cds.bound') && /[?&]bound=1/.test(location.search)) LS.setItem('cds.bound','1'); }catch(e){}
+    if(LS.getItem('cds.bound')!==null) showContent();
+    if(m){
+      S.scene=m[1];
+      if(S.scene==='article' && !S.article.sections.length){
+        S.article.sections=(VERSES[23]).map(function(v){ return {sn:v[0],text:v[1]}; });
+        S.article.title='诗篇 23 章';
+      }
+      if(S.scene==='cast' && !S.cast.text) S.cast.text='耶和华是我的牧者\n我必不致缺乏\n他使我躺卧在青草地上';
+      try{ LS.setItem('cds.bound','1'); }catch(e){}
+      showContent();
+    }
+    if(/[?&]blank=1/.test(location.search)){ S.standby={mode:'blank',bg:{kind:'black'}}; }
+    if(/[?&]theme=day/.test(location.search)) setTheme('day');
+    if(/[?&]theme=night/.test(location.search)) setTheme('night');
+    if(LS.getItem('cds.bound')!==null) render();
+    else inputs[0].focus();
+  })();
+})();
+</script>
+</body>
+</html>
