@@ -99,7 +99,7 @@ grep -c '^- \[ \]' shared/docs/acceptance/验收清单-V2.1.v260.125086.md # 275
 | `shared/docs/前端设计-V2.2.md` | **V2.2.6** | 239,306 / `e20946a5` | V2.1 全文 + **§16**（V2.2，需求 1–9）＋ **§17**（V2.2.1 第三轮 6 条）＋ **§17.9 裁决记录** ＋ **§18**（V2.2.2 第五轮 5 条）＋ **§19**（V2.2.3 第六轮 3 条：正文字号归位／m→n 同款控件／66 卷等宽对齐） |
 | `shared/docs/产品需求文档-V1.2.md` | **V1.8**（文件名沿用 V1.2） | 22,840 / `55156dfb` | PRD；同一份也写到 `shared/Class Display System - 产品需求文档.md`（旧 V1.1 备份在 `shared/backups/产品需求文档-V1.1-20261128.md`） |
 
-原型件：`shared/prototype-v1128/console.html` 95,510 B / `6c757c47` / 1515 行；`display.html` 38,225 B / `f66533ec` / 721 行；`screen.html` 38,375 B / `80d0a4a2`（与仓库 `prototype/` 同内容）。
+原型件：`shared/prototype-v1128/console.html` 95,507 B / `bc49f2ce` / 1515 行；`display.html` 38,222 B / `082345ea` / 721 行；`screen.html` 38,375 B / `80d0a4a2`（与仓库 `prototype/` 同内容）。
 同一目录下 `peer-1518/` 是他人更早产出的同名原型，**Jeremyzh 2026-11-28 16:52 裁决「以当日最新沟通为准」⇒ 不采用、仅备查**。
 
 过程稿（**已被取代**，仅留证）：`shared/docs/前端设计-V2.2-1128-同步稿.md`、`shared/docs/产品需求文档-V1.2-1128-同步稿.md`。
@@ -141,4 +141,5 @@ grep -c '^- \[ \]' shared/docs/acceptance/验收清单-V2.1.v260.125086.md # 275
 | `prototype/v1/` | 更早的 V1，未动 |
 | `prototype-v1128/` | 与 `prototype/` 同内容，供追溯 |
 
-- 本轮盘口：`console.html` 95,510 / `6c757c47`；`display.html` 38,225 / `f66533ec`；`screen.html` 38,375 / `80d0a4a2`。
+- 本轮盘口（**入库后**，标题统一为 V2.2.6）：`console.html` 95,507 / `bc49f2ce`；`display.html` 38,222 / `082345ea`；`screen.html` 38,377 / `93b7ca1d`。
+- 线上：https://cds.242500.xyz/prototype/ （入口页列出四件）
