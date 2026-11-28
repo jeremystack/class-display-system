@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CDS 单屏模式原型 V2.1（显控一体）</title>
+<style>
+:root{
+  /* 每个场景一套样式（V2.1 样式分域示意） */
+  --standby-bg:#0b1220; --standby-fg:#e8eef8;
+  --music-bg:#05070d; --music-fg:#eef2fb; --music-accent:#8ab4f8;
+  --article-bg:#0a0f14; --article-fg:#f0ece2; --article-accent:#d8c48a;
+  --cast-bg:#ffffff; --cast-fg:#111318;
+  /* V2.1.6：字号以 px 为准（与 display 同一口径）；--scale 只做旧载荷兼容 */
+  --fs:72px; --scale:1.15; --lh:1.75;
+  --ui: system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --body: "Songti SC","Noto Serif SC",serif;
+}
+*{box-sizing:border-box}
+html{font-size:18px}
+/* V2.1.43：整页禁选/禁双击缩放（长按选字会跟手势抢事件）；输入与迷你条单独放开 */
+html,body{margin:0;height:100%;overflow:hidden;background:#000;color:#fff;
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
+#bar,#bar *{user-select:none}
+body{font-family:var(--ui)}
+#surface{position:fixed;inset:0;display:flex;flex-direction:column;transition:background-color .2s ease,color .2s ease}
+#surface.blank{background:#000 !important;color:#000}
+
+/* ── 待机（主题/黑屏） ── */
+.standby{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+  background:radial-gradient(120% 90% at 20% 10%,#1c3a5e 0%,#0b1220 55%,#060a12 100%);color:var(--standby-fg)}
+.standby .room{font-size:.95rem;letter-spacing:.3em;opacity:.75}
+.standby .clock{font:600 min(11rem,22vw)/1 ui-monospace,monospace;letter-spacing:.04em;margin:.6rem 0}
+.standby .wait{font-size:.8rem;opacity:.5;letter-spacing:.2em}
+#surface.blank .standby{background:#000}
+#surface.blank .standby .room,#surface.blank .standby .clock,#surface.blank .standby .wait{display:none}
+.hotzone{position:fixed;left:0;right:0;bottom:0;height:80px;z-index:30}
+
+/* ── 音乐 ── */
+.music{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+  background:var(--music-bg);color:var(--music-fg);padding:4vh 6vw}
+/* V2.1.5：去掉封面（与 display 一致：只留歌名 + 歌词） */
+.music .t{font-size:1.45rem;font-weight:600;letter-spacing:.05em}
+.music .sub{font-size:.78rem;opacity:.55;margin-top:.5rem}
+.lyrics{margin-top:3vh;font-size:1.25rem;line-height:2.1;color:rgba(255,255,255,.42)}
+.lyrics .lyric{transition:color .18s,transform .18s}
+.lyrics .lyric.cur{color:var(--music-accent);transform:scale(1.06)}
+
+/* ── 文章（分页，禁滚动） ── */
+.article{flex:1;display:flex;flex-direction:column;background:var(--article-bg);color:var(--article-fg);
+  padding:5vh 5vw;overflow:hidden}
+.article .head{display:flex;align-items:baseline;gap:14px;font-size:.8rem;opacity:.7;margin-bottom:2.2vh}
+.article .head b{font-size:1rem;opacity:1}
+.article .body{flex:1;font-family:var(--body);font-size:var(--fs);line-height:var(--lh);min-height:0;overflow:hidden;position:relative}
+/* V2.1.6：整章常驻 + 视口起点移动（同一套行流算法，见 display.html） */
+.article .body .flow{position:absolute;left:0;right:0;top:0;will-change:transform}
+.article .body p{margin:0 0 1.1em}
+.article .sn{font-size:.62em;opacity:.5;margin-right:.5em;vertical-align:super;line-height:1}
+/* V2.1.10：每行一个 nowrap 块——行数由切行数组决定，不靠自然折行 */
+.article .body p .ln{display:block;white-space:nowrap;overflow:hidden}
+.body p .ln.cont{padding-left:0}   /* 换行行与首行齐左（V2.2.5，同 display.html） */
+.article .foot{display:flex;justify-content:flex-end;font-size:.68rem;opacity:.5;min-height:1.4em}
+
+/* ── 板书 ── */
+/* V2.1.62（Jeremyzh 15:26 定案）：板书**不滚动、不降档、不测算**，屏端只裁切；V2.1.43 的竖向
+   滚动一并删除——溢出由发送端控制。
+   歌词另算：它是 transform 视口，不加滚动。 */
+.cast{flex:1;background:var(--cast-bg);color:var(--cast-fg);padding:6vh 6vw;font-family:var(--body);
+  font-size:var(--fs);line-height:var(--lh);white-space:pre-wrap;overflow:hidden}
+
+/* ── 迷你控制条 ── */
+#bar{position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(0);z-index:40;
+  display:flex;align-items:center;gap:6px;padding:7px 9px;border-radius:999px;
+  background:rgba(12,16,24,.86);border:1px solid rgba(255,255,255,.14);
+  box-shadow:0 10px 30px rgba(0,0,0,.5);backdrop-filter:blur(10px);
+  transition:opacity .35s ease, transform .35s ease;opacity:1}
+#bar.dim{opacity:.12}
+#bar:hover{opacity:1}
+#bar .grp{display:flex;gap:4px;align-items:center}
+#bar .sep{width:1px;height:22px;background:rgba(255,255,255,.16);margin:0 4px}
+#bar button{font:inherit;font-size:.74rem;color:#e9eef8;background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:6px 12px;min-height:34px;cursor:pointer;white-space:nowrap}
+#bar button:hover{background:rgba(255,255,255,.13)}
+#bar button[aria-selected="true"]{background:#2563eb;border-color:#2563eb;color:#fff}
+#bar button.danger{border-color:#5a2222;color:#ffb3b3}
+
+/* ── 系统层 / 提示 ── */
+.sys{position:fixed;left:0;right:0;top:0;padding:.7rem 1rem;text-align:center;font-size:.8rem;
+  background:rgba(20,26,38,.92);color:#e8eef8;z-index:60;transform:translateY(-110%);transition:transform .2s}
+.sys.show{transform:none}
+.chip{position:fixed;right:16px;top:14px;z-index:50;font-size:.68rem;color:rgba(255,255,255,.55);
+  border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:5px 10px;background:rgba(10,14,22,.6)}
+.visually{position:fixed;left:16px;top:14px;z-index:50;max-width:46ch;font-size:.7rem;line-height:1.6;
+  color:#ffd9a8;border:1px solid #5a3f1a;background:rgba(60,40,12,.72);border-radius:10px;padding:8px 11px}
+.visually b{color:#ffc46b}
+.visually button{margin-left:8px;font-size:.68rem;color:#ffd9a8;background:none;border:1px solid #5a3f1a;border-radius:6px;padding:2px 7px;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="surface"></div>
+<div id="sys" class="sys"></div>
+<div id="chip" class="chip">🔊 声音从本机输出 · 单屏模式</div>
+<div id="visually" class="visually">
+  <b>复制模式提醒</b>：HDMI 复制下，学生看到的就是这一屏 —— <b>包括这条控制条</b>和按「黑屏」的动作。
+  「黑屏」的作用是不让学生看到下一条内容，<b>不是防窥</b>。<button id="visuallyOk">知道了</button>
+</div>
+
+<nav id="bar" aria-label="迷你控制条">
+  <div class="grp" role="tablist">
+    <button role="tab" data-scene="standby">待机</button>
+    <button role="tab" data-scene="music">音乐</button>
+    <button role="tab" data-scene="article">文章</button>
+    <button role="tab" data-scene="cast">板书</button>
+  </div>
+  <span class="sep" id="sepM"></span>
+  <div class="grp" id="grpMusic">
+    <button data-m="prev" title="清单上一首">⏮</button>
+    <button data-m="toggle" title="播放 / 暂停">⏯</button>
+    <button data-m="next" title="清单下一首">⏭</button>
+  </div>
+  <span class="sep" id="sepA"></span>
+  <div class="grp" id="grpArticle">
+    <button data-a="unit" title="切换步进单位：按屏 / 按节（节＝章）">按节</button>
+    <button data-a="prev">上一屏</button>
+    <button data-a="next">下一屏</button>
+    <button data-a="fit" title="按步长降字号直到整章 1 屏">整章一屏</button>
+    <button data-a="present" class="danger" id="presentBtn">投出</button>
+  </div>
+  <button id="np" class="np" title="点一下停止背景音乐"></button>
+  <span class="sep"></span>
+  <div class="grp">
+    <button id="blankBtn">黑屏</button>
+    <button id="exitBtn">退出</button>
+  </div>
+</nav>
+
+<script>
+(function(){
+  'use strict';
+  var LS=window.localStorage, BC=('BroadcastChannel' in window)? new BroadcastChannel('cds-proto') : null;
+  var $=function(id){return document.getElementById(id);};
+  function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function fmt(ms){ var t=Math.max(0,Math.floor(ms/1000)); return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0'); }
+  function sys(text,ms){ var e=$('sys'); e.textContent=text; e.className='sys show'; clearTimeout(sys._t); if(ms) sys._t=setTimeout(function(){e.className='sys';},ms); }
+  if(LS.getItem('cds.visuallyOk')) $('visually').style.display='none';
+
+  // ── 状态（V2.1：四场景；待机为默认） ──
+  var S={
+    scene:'standby',
+    standby:{ mode:'theme' },                     // theme | blank
+    music:{ idx:0, playing:false, pos:0, items:[
+      {t:'我心灵得安宁', dur:245000},{t:'奇异恩典', dur:222000},{t:'靠近主', dur:310000}]},
+    article:{ idx:0, page:0, cast:false, items:[{t:'诗篇 23 章',ch:23},{t:'约伯记 3 章',ch:3}]},
+    cast:{ active:false, text:'' },
+    // 样式按场景分域（V2.1 ④）：演示用两套差异明显的样式
+    styles:{ standby:{bg:'#0b1220',fg:'#e8eef8'}, music:{bg:'#05070d',fg:'#eef2fb'},
+             article:{bg:'#0a0f14',fg:'#f0ece2'}, cast:{bg:'#ffffff',fg:'#111318'} }
+  };
+  try{
+    var sv=JSON.parse(LS.getItem('cds.consoleState')||'null');
+    if(sv){ if(sv.music) S.music.items=sv.music; if(sv.article) S.article.items=sv.article; }
+    var st=JSON.parse(LS.getItem('cds.screenState')||'null');
+    if(st){ S.standby=st.standby||S.standby; S.styles=st.styles||S.styles; }
+  }catch(e){}
+  function save(){ LS.setItem('cds.screenState', JSON.stringify({standby:S.standby,styles:S.styles})); }
+  function send(m){ if(BC) BC.postMessage(m); }
+
+  // V2.1.43：演示歌词与 display 共用**同一组 24 行**（原来 display 5 行 / screen 6 行，两套演示都不出滚动，
+  // 签字时看不到滚动与居中——一条「看起来对」的演示会把缺陷盖住）
+  var LYRICS=['宇宙广阔无垠','我心灵得安宁','如海洋般深沉','主恩典够我用','我安然躺卧','直到永远',
+    '他使我灵魂苏醒','引我走义路','我虽行过死荫幽谷','也不怕遭害','因你与我同在','你的杖你的竿',
+    '都安慰我','在我敌人面前','你为我摆设筵席','你用油膏了我的头','使我的福杯满溢','我一生一世',
+    '必有恩惠慈爱随着我','我且要住在','耶和华的殿中','哈利路亚','赞美主名','阿们'];
+  var VERSES={
+    23:[['1','耶和华是我的牧者，我必不致缺乏。'],['2','他使我躺卧在青草地上，领我在可安歇的水边。'],['3','他使我的灵魂苏醒，为自己的名引导我走义路。'],
+        ['4','我虽然行过死荫的幽谷，也不怕遭害，因为你与我同在；你的杖，你的竿，都安慰我。'],['5','在我敌人面前，你为我摆设筵席；你用油膏了我的头，使我的福杯满溢。'],['6','我一生一世必有恩惠慈爱随着我，我且要住在耶和华的殿中，直到永远。']],
+    3:[['1','此后，约伯开口咒诅自己的生日。'],['2','说：愿我生的那日和说怀了男胎的那夜都灭没。'],['3','愿那日变为黑暗；愿神不从上面寻找它。']]
+  };
+
+  // ── 每个场景各自套样式（切场景原子生效，不出现默认样式帧） ──
+  // V2.1.11：每行字数默认 auto（按屏宽 ÷ 字号派生）
+  var STYLE_CPL='auto';
+  var STYLE_FPX='auto';        // V2.2.22：'auto'＝按视口高派生；数字＝显式锁定
+  function deriveFpx(){
+    var _h=window.innerHeight||1080;
+    return Math.max(24, Math.min(160, Math.round(_h*0.067/4)*4));
+  }
+  function applyFpx(){
+    var f=(STYLE_FPX==='auto')?deriveFpx():STYLE_FPX;
+    f=Math.max(24, Math.min(160, f));
+    document.documentElement.style.setProperty('--fs', f+'px');
+    return f;
+  }
+  function applySceneStyle(scene){
+    var st=S.styles[scene]||{}; var r=document.documentElement.style;
+    // V2.1.6：单屏页也吃 fontSizePx（px），不再用 1rem×scale 那种倍率——倍率算不出「一屏几行」
+    // V2.2.13：fontScale 作废，不再 ×18 折算（1.0 会得 18px）
+    // V2.2.22：显式值锁进 STYLE_FPX（换屏不重算）；缺省或 'auto' ⇒ 每次按视口高派生。
+    // 旧码把派生算在切场景这一处，换屏（窗口化<->全屏/旋屏）后字号仍是旧视口的值
+    // （产品 V2.1.19 验收 B11：单屏页派生字号必须随视口高重派生）。
+    var _f=+st.fontSizePx;
+    STYLE_FPX=(st.fontSizePx!=null && st.fontSizePx!=='auto' && isFinite(_f)) ? Math.max(24, Math.min(160, _f)) : 'auto';
+    applyFpx();
+    if(st.lineHeight) r.setProperty('--lh', st.lineHeight);
+    if(st.charsPerLine==='auto') STYLE_CPL='auto';
+    else if(st.charsPerLine!=null && st.charsPerLine!=='') STYLE_CPL=Math.max(6, Math.min(40, +st.charsPerLine||12));
+    if(st.bg) r.setProperty('--'+scene+'-bg',st.bg);
+    if(st.fg) r.setProperty('--'+scene+'-fg',st.fg);
+    $('surface').className = (scene==='standby' && S.standby.mode==='blank') ? 'blank' : '';
+  }
+
+  // ── 分页 / 步进：整章行流 + 真实几何（V2.1.6）
+  // 不再维护平行 ruler：getBoundingClientRect() 不含 margin，段距会整体丢失——
+  // V2.1.5 在默认 72px 下就裁行（3 个两行节测得 756≤911 通过、实渲染 993.6 → overflow:hidden 静默裁掉最后一行）
+  var A={ready:false, unit:'page', pageIndex:0, sectionIndex:0,
+         totalLines:1, viewLines:1, pageCount:1, sectionCount:0, verseLineIndex:[], lineY:[], pageStarts:[0], lh:126};
+
+  function artBody(){ return document.querySelector('#surface .article .body'); }
+
+  function charW(ch){ return ch.charCodeAt(0) < 128 ? 0.5 : 1; }
+  // V2.2.19（产品 V2.1.15 定稿）：续行悬挂缩进。每节**首行顶格**、字宽上限 `c`；
+  // 节内折行（第 2 行及以后）与 `unit=page` 页切后的续行都缩 1 字符 ⇒ 有效字数 `c−1`。
+  // 缩进是**样式不是字符**：正文文本里不插入任何空格/全角空格，复制出来仍是原文。
+  // 首行带行内节号（.sn 0.62em 字 + .5em 右距）。节号占的宽度要从首行字数里扣掉，
+  // 否则「c 个字 + 节号」超过可用宽，行尾会被 overflow:hidden 静默裁掉（V2.2.5 修）。
+  function snCharCost(sn){
+    var k=String(sn||'').replace(/\D/g,'').length || 1;
+    return Math.ceil(k*0.31 + 0.5);
+  }
+  function sliceHang(text, c, sn){
+    var out=[], cur='', acc=0, lim=Math.max(1, c - snCharCost(sn));
+    for(var i=0;i<text.length;i++){
+      var w=charW(text.charAt(i));
+      if(cur && acc+w > lim+1e-9){ out.push(cur); cur=''; acc=0; lim=c; }   // 齐左后不再少算 1 字
+      cur+=text.charAt(i); acc+=w;
+    }
+    out.push(cur);
+    return out;
+  }
+  function sliceLines(text, c){
+    var out=[], cur='', acc=0;
+    for(var i=0;i<text.length;i++){
+      var w=charW(text.charAt(i));
+      if(cur && acc+w > c+1e-9){ out.push(cur); cur=''; acc=0; }
+      cur+=text.charAt(i); acc+=w;
+    }
+    out.push(cur);
+    return out;
+  }
+  // 有效上限 = min(24 可读性底线, floor(W÷F))——24 是可读性，不是技术限制
+  function cplMax(W){
+    var F=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fs'))||72;
+    return Math.max(6, Math.min(24, Math.floor((W||1728)/F)));
+  }
+  // V2.2.17：可用宽＝正文块的内容宽。**不能拿 #surface.clientWidth**——#surface 是 inset:0 全宽，
+  // 而 `.article` 有 5vw 左右 padding；1280 屏会读到 1280（真可用 1152），
+  // 72px 下算出 17 而真上限 16 ⇒ 每行多排 1 字，行尾被 overflow:hidden 静默裁掉（与 display 的 131px 同类）。
+  function usableW(body){
+    if(body && body.clientWidth){
+      var cs=getComputedStyle(body);
+      return body.clientWidth - (parseFloat(cs.paddingLeft)||0) - (parseFloat(cs.paddingRight)||0);
+    }
+    // 渲染期 .body 尚未插入：正文块恒为视口宽的 90%（.article 的 5vw×2）
+    return Math.max(240, (window.innerWidth||1280) * 0.9);
+  }
+  function cplNow(body){
+    var W=usableW(body), cap=cplMax(W);
+    if(STYLE_CPL==='auto') return cap;
+    var c=parseInt(STYLE_CPL,10); if(!c) return cap;
+    return Math.max(6, Math.min(cap, c));
+  }
+
+  // V2.2.16：改 charsPerLine 后**必须重切行**——`data-lines` 是渲染期按当时 cpl 算的。
+  // 旧码只改 STYLE_CPL 不重建 DOM ⇒ ② 档永远判不出变化（空转）；若靠 ③ 成一屏，
+  // 回报的每行字数与画出来的行数不一致（与 display.html 同一处订正）。
+  function rebuildArticle(){
+    if(S.scene!=='article') return;
+    var surf=document.querySelector('#surface'); if(!surf) return;
+    var flow=surf.querySelector('.article .flow'); if(!flow) return;
+    var a=S.article.items[S.article.idx]||{t:'诗篇 23 章',ch:23};
+    var vs=VERSES[a.ch]||VERSES[23]; A.verses=vs;
+    var cpl=cplNow(artBody());          // V2.2.17：不是 #surface（含 5vw padding）
+    flow.innerHTML=vs.map(function(v){
+      var ls=sliceHang(v[1], cpl, v[0]);
+      return '<p data-lines="'+ls.length+'">'+ls.map(function(l,i){
+        return '<span class="ln'+(i===0?'':' cont')+'">'+(i===0?'<span class="sn">'+v[0]+'</span>':'')+esc(l)+'</span>';}).join('')+'</p>';
+    }).join('');
+  }
+
+  // V2.1.10：算术分页（主路径）。行数＝切行数组长度
+  function layoutArticle(silent){
+    var body=artBody(); if(!body) return;
+    var flow=body.querySelector('.flow'); if(!flow) return;
+    flow.style.transform='none';
+    var cs=getComputedStyle(body);
+    var F=parseFloat(cs.fontSize)||72;
+    var lh=parseFloat(cs.lineHeight)||(F*1.75);
+    var gap=1.1*F;                      // 段距恒 1.1em，与 display 同一口径
+    var H=body.clientHeight; if(H<40) return;
+    var els=[].slice.call(flow.children);
+    A.L=els.map(function(el){ return Math.max(1, parseInt(el.getAttribute('data-lines'),10)||1); });
+    A.lineY=[]; A.verseLineIndex=[];
+    var y=0, total=0;
+    A.L.forEach(function(n){
+      A.verseLineIndex.push(A.lineY.length);
+      for(var i=0;i<n;i++) A.lineY.push(y+i*lh);
+      y += n*lh + gap; total += n;
+    });
+    A.totalLines=total; A.lh=lh; A.sectionCount=A.L.length;
+    buildPageStarts(H, lh, gap);
+    A.ready=true;
+    verifyModel(flow);
+    applyView(silent);
+    postMetrics();                      // V2.2.20：每次重排后上报一次几何（200ms 防抖）
+    if(_ackPending || !_ackSent){ _ackPending=false; _ackSent=true; sendStyleApplied(''); }
+  }
+
+  function buildPageStarts(H, lh, gap){
+    var ps=[0], used=0, secsOnPage=0, k=0, off=0, done=0;
+    while(k<A.L.length){
+      var remaining=A.L[k]-off;
+      if(remaining<=0){ k++; off=0; continue; }
+      var need=remaining*lh + ((secsOnPage>0 && off===0) ? gap : 0);
+      if(used+need<=H+0.5){
+        used+=need; done+=remaining; secsOnPage++; k++; off=0;
+      } else if(secsOnPage===0){
+        var per=Math.max(1, Math.floor((H+0.5)/lh)); if(per>remaining) per=remaining;
+        used+=per*lh; done+=per; off+=per;
+        ps.push(done); used=0; secsOnPage=0;
+      } else {
+        ps.push(done); used=0; secsOnPage=0;
+      }
+    }
+    A.pageStarts=ps; A.pageCount=ps.length;
+    A.viewLines=(ps.length>1 ? ps[1] : A.totalLines) - ps[0];
+    if(A.viewLines<1) A.viewLines=1;
+  }
+
+  function verifyModel(flow){
+    var bad=0, worst=0;
+    [].slice.call(flow.children).forEach(function(el,k){
+      var exp=A.L[k]*A.lh, act=el.getBoundingClientRect().height, d=Math.abs(exp-act);
+      if(d>worst) worst=d; if(d>1) bad++;
+    });
+    A.modelWarn=bad?worst:0;
+    if(bad && window.console) console.warn('[cds] 排版模型偏差 '+worst.toFixed(1)+'px（'+bad+' 节）');
+  }
+
+  function sectionOfLine(line){
+    var k=0;
+    for(var i=0;i<A.verseLineIndex.length;i++){ if(A.verseLineIndex[i]<=line) k=i; }
+    return k;
+  }
+
+  function pageOfLine(line){
+    var p=0;
+    for(var i=0;i<A.pageStarts.length;i++){ if(A.pageStarts[i]<=line) p=i; }
+    return p;
+  }
+
+  function applyView(silent){
+    var body=artBody(); if(!body||!A.ready) return;
+    var flow=body.querySelector('.flow'); if(!flow) return;
+    var startLine;
+    if(A.unit==='section'){
+      A.sectionIndex=Math.max(0,Math.min(A.sectionCount-1,A.sectionIndex));
+      startLine=A.verseLineIndex[A.sectionIndex]||0;
+      A.pageIndex=pageOfLine(startLine);      // pageCount 恒为整章屏数，与 unit 无关
+    } else {
+      A.pageIndex=Math.max(0,Math.min(A.pageCount-1,A.pageIndex));
+      startLine=A.pageStarts[A.pageIndex];
+      A.sectionIndex=sectionOfLine(startLine);
+    }
+    flow.style.transform='translateY(-'+(A.lineY[startLine]||0).toFixed(1)+'px)';
+    var foot=document.querySelector('#surface .article .foot');
+    if(foot){
+      if(A.unit==='page'){
+        var nxt=A.pageStarts[A.pageIndex+1];
+        var contTop=(A.pageIndex>0 && A.verseLineIndex.indexOf(startLine)<0);
+        var cut=(nxt!=null && A.verseLineIndex.indexOf(nxt)<0);
+        foot.textContent=(contTop?'（续上） ':'')+(cut?'（续）':'');
+      } else {
+        foot.textContent='节 '+(A.sectionIndex+1)+' / '+A.sectionCount;   // section 模式没有屏概念，也永不标「续」
+      }
+    }
+    var seg=document.querySelector('#surface .article .head .seg');
+    if(seg) seg.textContent = A.unit==='section'
+      ? ('第 '+(A.sectionIndex+1)+' / '+A.sectionCount+' 节')
+      : ('第 '+(A.pageIndex+1)+' / '+A.pageCount+' 屏');
+    if(!silent) postPageMap();
+  }
+
+  // mqtt §4.4：`anchor`＝视口起点所在经节与节内字符偏移（行号只在本机内部用，不上行）
+  function anchorAt(line){
+    var k=sectionOfLine(line), vs=A.verses||[];
+    var li=Math.max(0, line-(A.verseLineIndex[k]||0));
+    var txt=(vs[k]&&vs[k][1])||'', cpl=cplNow(artBody())||12;
+    var off=0, acc=0, n=0;
+    while(off<txt.length && n<li){
+      var w=(txt.charCodeAt(off)<128?0.5:1);
+      if(acc+w>cpl+1e-9){ n++; acc=0; continue; }
+      acc+=w; off++;
+    }
+    return {verseSn:(vs[k]?+vs[k][0]:(k+1)), charOffset:off};
+  }
+  function postPageMap(){
+    if(!BC || !A.ready) return;
+    var startLine=(A.unit==='section') ? (A.verseLineIndex[A.sectionIndex]||0) : (A.pageStarts[A.pageIndex]||0);
+    BC.postMessage({kind:'pageMap', anchor:anchorAt(startLine), unit:A.unit,
+      pageIndex:A.pageIndex, pageCount:A.pageCount, sectionIndex:A.sectionIndex,
+      sectionCount:A.sectionCount, viewLines:A.viewLines});   // 恒 7 字段：totalLines / charsPerLine 都不上行
+  }
+
+  // V2.2.20（协议 §4.6 `state.report.layout`）：单屏/显控一体形态（D-3）**必须同样上报几何**。
+  // 否则控制台只能回退 1728 并标「估算」——三值方案在 D-3 上等于失效。
+  // 五项取**同一帧**实测：availW/availH ＝ 正文块内容宽/高，fontSizePx/lineHeight 取计算值，
+  // charsPerLine 取 auto 派生后的整数（cplNow 与渲染切行同源）。200ms 防抖合并同一波重排。
+  // V2.2.20（协议 §4.6 `ack.effective`）：D-3 单屏形态**必须回带生效三值**——
+  // 否则控制台发 style 后无从判断「锁的 24 有没有被 clamp 回 16」「auto 派生出多少」，
+  // 就是我们要打的「静默改值」。三值取根部 CSS 变量（`--fs` px / `--lh` 比率）
+  // 与 `cplNow()` 同一口径（`auto` 回派生出的整数，不回字符串 "auto"）。
+  var _ackPending=false, _ackSent=false;
+  function sendStyleApplied(note){
+    if(!BC) return;
+    var r=getComputedStyle(document.documentElement);
+    var epx=parseFloat(r.getPropertyValue('--fs'))||72;
+    var elh=parseFloat(r.getPropertyValue('--lh'))||1.75;
+    BC.postMessage({kind:'styleApplied',
+      effective:{fontSizePx:epx, lineHeight:elh, charsPerLine:cplNow(artBody())}, note:note||''});
+  }
+
+  var _mt=null;
+  function postMetrics(){
+    if(!BC) return;
+    clearTimeout(_mt);
+    _mt=setTimeout(function(){
+      if(!BC) return;
+      var b=artBody(); if(!b) return;                 // 非 article 场景无正文块，不上报
+      if(!(b.clientHeight>40)) return;
+      var cs=getComputedStyle(b);
+      BC.postMessage({kind:'layoutMetrics', availW:usableW(b), availH:b.clientHeight,
+        fontSizePx:parseFloat(cs.fontSize)||72, lineHeight:parseFloat(cs.lineHeight)||0,
+        charsPerLine:cplNow(b)});
+    }, 200);
+  }
+
+  function stepArticle(dir, steps){
+    if(!A.ready) return;
+    var st=Math.max(1,steps||1);
+    if(A.unit==='section'){
+      var ni=A.sectionIndex+(dir==='prev'?-st:st);
+      A.sectionIndex=Math.max(0,Math.min(A.sectionCount-1,ni));
+      if(ni!==A.sectionIndex) sys('已到章末', 1600);
+    } else {
+      var np=A.pageIndex+(dir==='prev'?-st:st);
+      A.pageIndex=Math.max(0,Math.min(A.pageCount-1,np));
+      if(np!==A.pageIndex) sys('已到章末', 1600);
+    }
+    var line=(A.unit==='section')?(A.verseLineIndex[A.sectionIndex]||0):A.pageStarts[A.pageIndex];
+    if(A.unit==='section') A.pageIndex=pageOfLine(line); else A.sectionIndex=sectionOfLine(line);
+    applyView();
+  }
+
+  function setUnit(u){
+    var startLine=(A.unit==='section')?(A.verseLineIndex[A.sectionIndex]||0):A.pageStarts[A.pageIndex];
+    A.unit=(u==='section')?'section':'page';
+    if(A.unit==='section') A.sectionIndex=sectionOfLine(startLine);
+    else A.pageIndex=pageOfLine(startLine);
+    applyView();                      // 切 unit 不重发 pageMap：pageCount / sectionCount 恒报、不跳数
+  }
+
+  // 「整章一屏」＝逐级降档到 pageCount==1。顺序（Jeremyzh 12:43）：
+  //   ① 先降行距 1.75→1.2（步长 0.05）→ ② 再把每行字数抬到上限 → ③ 最后降字号（步长 4、下限 24）
+  // 三档到底仍多屏 ⇒ 全部回滚，不留半套样式。
+  function fitOnePage(){
+    var root=document.documentElement.style;
+    var F0=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fs'))||72;
+    var LH0=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--lh'))||1.75;
+    var CP0=STYLE_CPL, changed=[], done=false;
+    function fits(){ layoutArticle(true); return A.pageCount<=1; }
+    layoutArticle(true);
+    if(A.pageCount<=1){ postPageMap(); sys('整章一屏：已是一屏，未动样式', 2400); return; }
+    var lh=+LH0.toFixed(2);
+    while(!done && lh>1.2+1e-9){
+      lh=+Math.max(1.2, lh-0.05).toFixed(2);
+      root.setProperty('--lh', lh);
+      if(fits()){ changed.push('行距 '+LH0.toFixed(2)+'→'+lh.toFixed(2)); done=true; }
+    }
+    if(!done){
+      var host=artBody(), cap=cplMax(usableW(host));      // V2.2.17：不能传 clientWidth（含 5vw padding）
+      if(cplNow(host)<cap){ STYLE_CPL=cap; rebuildArticle(); if(fits()){ changed.push('每行 '+CP0+'→'+cap+' 字'); done=true; } }
+    }
+    var px=F0;
+    while(!done && px>24){
+      px=Math.max(24, px-4);
+      root.setProperty('--fs', px+'px');
+      if(fits()){ changed.push('字号 '+F0+'→'+px+'px'); done=true; }
+    }
+    if(!done){
+      root.setProperty('--lh', LH0); root.setProperty('--fs', F0+'px'); STYLE_CPL=CP0;
+      rebuildArticle();                                   // V2.2.16：复原 cpl 后必须重切，别留 ② 档的行数
+      layoutArticle(true); postPageMap();
+      sendStyleApplied('整章一屏：已到最小仍多屏，样式已还原');
+      sys('整章一屏：已到最小仍 '+A.pageCount+' 屏，样式已还原', 3200); return;
+    }
+    postPageMap();
+    sendStyleApplied('整章一屏：'+changed.join('、'));   // 三档动过的值必须回带
+    sys('整章一屏：'+changed.join('、'), 3200);
+  }
+
+  // ── 渲染 ──
+  function render(){
+    applySceneStyle(S.scene);
+    var s=$('surface'), html='';
+    if(S.scene==='standby'){
+      var blank=S.standby.mode==='blank';
+      html='<div class="standby">'+(blank?'':'<div class="room">主堂 · 显示终端</div>'+
+        '<div class="clock" id="clock">'+clockText()+'</div><div class="wait">等待控制台</div>')+'</div>';
+    } else if(S.scene==='music'){
+      var it=S.music.items[S.music.idx]||{t:'',dur:245000};
+      var cur=Math.min(LYRICS.length-1,Math.floor((S.music.pos/it.dur)*LYRICS.length));
+      html='<div class="music"><div class="t">'+esc(it.t)+'</div>'+
+        '<div class="sub">'+(S.music.playing?'正在播放':'已暂停')+' · 第 '+(S.music.idx+1)+' / '+S.music.items.length+' 首 · '+fmt(S.music.pos)+'</div>'+
+        '<div class="lyrics">'+LYRICS.map(function(l,i){return '<div class="lyric'+(i===cur?' cur':'')+'">'+esc(l)+'</div>';}).join('')+'</div></div>';
+    } else if(S.scene==='article'){
+      var a=S.article.items[S.article.idx]||{t:'诗篇 23 章',ch:23};
+      var vs=VERSES[a.ch]||VERSES[23]; A.verses=vs;
+      html='<div class="article"><div class="head"><b>'+esc(a.t)+'</b><span class="seg"></span>'+
+        '<span style="margin-left:auto">'+(S.article.cast?'● 已上屏':'○ 预览（未上屏）')+'</span></div>'+
+        '<div class="body"><div class="flow">'+vs.map(function(v){
+          var ls=sliceHang(v[1], cplNow(artBody()), v[0]);
+          return '<p data-lines="'+ls.length+'">'+ls.map(function(l,i){
+            return '<span class="ln'+(i===0?'':' cont')+'">'+(i===0?'<span class="sn">'+v[0]+'</span>':'')+esc(l)+'</span>';}).join('')+'</p>';}).join('')+'</div></div>'+
+        '<div class="foot"></div></div>';
+    } else {
+      html='<div class="cast">'+esc(S.cast.text||'（板书内容来自控制台）')+'</div>';
+    }
+    s.innerHTML=html;
+    var b=$('bar');
+    b.querySelectorAll('button[data-scene]').forEach(function(x){ x.setAttribute('aria-selected',String(x.dataset.scene===S.scene)); });
+    $('grpMusic').style.display = S.scene==='music' ? '' : 'none';
+    $('sepM').style.display = S.scene==='music' ? '' : 'none';
+    $('grpArticle').style.display = S.scene==='article' ? '' : 'none';
+    $('sepA').style.display = S.scene==='article' ? '' : 'none';
+    $('presentBtn').textContent = S.article.cast ? '结束' : '投出';
+    // V2.1.6：步进按钮文案随 unit 变——数据里的「节」＝章
+    var bp=document.querySelector('[data-a="prev"]'), bn=document.querySelector('[data-a="next"]');
+    var ub=document.querySelector('[data-a="unit"]');
+    if(ub) ub.textContent=(A.unit==='section'?'按屏':'按节');
+    if(bp) bp.textContent=(A.unit==='section'?'上一节':'上一屏');
+    if(bn) bn.textContent=(A.unit==='section'?'下一节':'下一屏');
+    $('blankBtn').textContent = (S.scene==='standby' && S.standby.mode==='blank') ? '退出黑屏' : '黑屏';
+    // V2.1.2：非音乐画面下的音乐状态。article/cast 下必为暂停（不提供「继续」，服务端会 409）
+    var muted = (S.scene==='article' || S.scene==='cast');
+    var npOn = S.scene !== 'music' && (S.music.playing || S.music.pos > 0);
+    $('np').textContent = npOn ? ('♪ ' + ((S.music.items[S.music.idx]||{t:'—'}).t) + (muted?'（已暂停）':(' 停止 ' + fmt(S.music.pos)))) : '';
+    $('np').style.cssText = npOn ? 'font-size:12px;color:#8ab4f8;padding:0 8px;white-space:nowrap' : 'display:none';
+    if(S.scene==='article') requestAnimationFrame(function(){ layoutArticle(); });
+    // 分页不在 render 里同步做：切到文章 / resize / 字号变化时调用 afterLayout()（先等字体就绪）
+  }
+  function clockText(){ var d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+  setInterval(function(){ var c=$('clock'); if(c) c.textContent=clockText(); },20000);
+
+  // 文章：字体就绪 → 重绘 → 真实几何测量（V2.1.6：不再有平行 ruler，也不再有 pages 数组）
+  var measuring=false;
+  function afterLayout(){
+    if(measuring) return; measuring=true;
+    var go=function(){ render(); measuring=false; };
+    if(document.fonts && document.fonts.ready){ document.fonts.ready.then(go); } else go();
+  }
+  // V2.2.22：换屏必须先重派生字号，再重排——只 afterLayout 会让 --fs 停在旧视口值。
+  function kickLayout(){
+    if(S.scene!=='article') return;
+    clearTimeout(window._rz);
+    window._rz=setTimeout(function(){
+      if(STYLE_FPX==='auto') applyFpx();
+      afterLayout();
+    },200);
+  }
+  window.addEventListener('resize', kickLayout);
+  window.addEventListener('orientationchange', kickLayout);
+  document.addEventListener('fullscreenchange', kickLayout);
+  // V2.1.43：双击全屏（必须用户手势，首屏无法自动全屏）。全屏＝视口变化 ⇒ kickLayout 重排
+  document.addEventListener('dblclick', function(e){
+    if(e.target.closest('input')||e.target.closest('button')||e.target.closest('#bar')) return;
+    var el=document.documentElement;
+    if(document.fullscreenElement || document.webkitFullscreenElement){
+      (document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);
+    }else{
+      (el.requestFullscreen||el.webkitRequestFullscreen||function(){}).call(el);
+    }
+  });
+
+  // ── 交互 ──
+  $('bar').addEventListener('click', function(e){
+    var t=e.target.closest('button'); if(!t) return;
+    if(t.dataset.scene){ goto(t.dataset.scene); return; }
+    if(t.dataset.m){
+      var k=t.dataset.m;
+      if(k==='toggle') S.music.playing=!S.music.playing;
+      if(k==='prev'){ S.music.idx=Math.max(0,S.music.idx-1); S.music.pos=0; S.music.playing=true; }
+      if(k==='next'){ S.music.idx=Math.min(S.music.items.length-1,S.music.idx+1); S.music.pos=0; S.music.playing=true; }
+      send({kind:'music',idx:S.music.idx,pos:S.music.pos,playing:S.music.playing,action:k});
+      render(); return;
+    }
+    if(t.dataset.a){
+      var k2=t.dataset.a;
+      if(k2==='next'){ stepArticle('next'); return; }
+      if(k2==='prev'){ stepArticle('prev'); return; }
+      if(k2==='unit'){ setUnit(A.unit==='section'?'page':'section'); render(); return; }
+      if(k2==='fit'){ fitOnePage(); return; }
+      if(k2==='present'){ S.article.cast=!S.article.cast; sys(S.article.cast?'已投出：显示面=这一屏':'已结束投屏（回到待机）',1800);
+        send({kind:'article',idx:S.article.idx,page:A.pageIndex,unit:A.unit,cast:S.article.cast}); render(); return; }
+      render(); return;
+    }
+    if(t.id==='np'){   // V2.1.2：article/cast 下不可起音乐；待机下可停
+      if(S.scene==='article' || S.scene==='cast'){ sys('文章/板书期间不播放音乐：先回「待机」或「音乐」',1800); return; }
+      S.music.playing=false;
+      send({kind:'music',playing:false,pos:S.music.pos,idx:S.music.idx,action:'stop'});
+      sys('已停止播放（画面不动）',1600); render(); return;
+    }
+    if(t.id==='blankBtn'){
+      if(S.scene!=='standby') goto('standby');
+      S.standby.mode = S.standby.mode==='blank' ? 'theme' : 'blank';
+      save(); send({kind:'standby',mode:S.standby.mode}); render(); return;
+    }
+    if(t.id==='exitBtn'){ location.href='console.html'; }
+  });
+
+  function goto(scene){
+    if(scene===S.scene){ render(); if(scene==='article') afterLayout(); return; }
+    // V2.1.2：进入「看内容」的画面必须先停音乐（编排 pause-first，不是场景指令的副作用）
+    if((scene==='article'||scene==='cast') && S.music.playing){
+      S.music.playing=false;
+      send({kind:'music',playing:false,pos:S.music.pos,idx:S.music.idx,action:'pause'});
+      sys('音乐已暂停（'+(scene==='cast'?'板书':'文章')+'期间不播放）',1800);
+    }
+    S.scene=scene;
+    send({kind:'scene',scene:scene});
+    render();
+    if(scene==='article') afterLayout();
+  }
+
+  // ── 进度推进（本机就是音频锚点；原型用计时器代替真实解码） ──
+  setInterval(function(){
+    if(!S.music.playing) return;
+    S.music.pos+=250;
+    var it=S.music.items[S.music.idx]||{dur:245000};
+    if(S.music.pos>=it.dur){ S.music.playing=false; S.music.pos=it.dur; sys('本曲结束：停在 ended，不自动续播（① ）',2200); }
+    render();
+  },250);
+
+  // ── 控制条淡出（3s 无操作 → 12%；底边 80px 或 Esc 唤回） ──
+  var fadeT=null;
+  function wake(){ $('bar').classList.remove('dim'); clearTimeout(fadeT); fadeT=setTimeout(function(){ $('bar').classList.add('dim'); },3000); }
+  document.addEventListener('mousemove', function(e){ if(e.clientY > innerHeight-80) wake(); });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') wake(); if(/^[1-4]$/.test(e.key)){ goto(['standby','music','article','cast'][+e.key-1]); } });
+  $('bar').addEventListener('mouseenter', wake);
+  wake();
+
+  $('visuallyOk').addEventListener('click', function(){ $('visually').style.display='none'; LS.setItem('cds.visuallyOk','1'); });
+
+  // ── 控制台下行（与 console.html / display.html 共用通道） ──
+  if(BC) BC.onmessage=function(ev){
+    var d=ev.data||{};
+    if(d.kind==='scene' && d.scene){ S.scene=d.scene; render(); }
+    if(d.kind==='standby'){ S.standby.mode=d.mode||'theme'; save(); render(); }
+    if(d.kind==='music'){ if(typeof d.idx==='number') S.music.idx=d.idx; if(typeof d.pos==='number') S.music.pos=d.pos;
+      if(typeof d.playing==='boolean') S.music.playing=d.playing; render(); }
+    if(d.kind==='scroll'){ if(d.unit) setUnit(d.unit); stepArticle(d.direction||'next', d.steps); return; }
+    if(d.kind==='articleUnit'){ setUnit(d.unit); return; }
+    if(d.kind==='fitOnePage'){ fitOnePage(); return; }
+    if(d.kind==='article'){ if(typeof d.idx==='number') S.article.idx=d.idx; if(typeof d.page==='number'){ S.article.page=d.page; A.pageIndex=d.page; }
+      if(d.unit) A.unit=(d.unit==='section'?'section':'page');
+      if(S.scene!=='article' && d.cast!==false) S.scene='article';
+      if(typeof d.cast==='boolean'){ S.article.cast=d.cast; if(d.cast) S.scene='article'; }
+      render(); }
+    if(d.kind==='cast'){ S.cast.text=d.text||''; S.cast.active=!!d.active; S.scene=d.active?'cast':'standby'; render(); }
+    if(d.kind==='style'){ var sc=d.style&&d.style.scene||'article'; S.styles[sc]=Object.assign(S.styles[sc]||{},d.style||{}); save(); _ackPending=true; applySceneStyle(S.scene); render(); }
+  };
+
+  // ── 启动 ──
+  render();
+  // 演示深链：?scene=standby|music|article|cast&blank=1
+  var m=/[?&]scene=(standby|music|article|cast)/.exec(location.search);
+  if(m){ S.scene=m[1]; }
+  if(/[?&]blank=1/.test(location.search)) S.standby.mode='blank';
+  render();
+  if(S.scene==='article') afterLayout();
+})();
+</script>
+</body>
+</html>

@@ -58,7 +58,7 @@ body{font-family:var(--ui)}
 .article .sn{font-size:.62em;opacity:.5;margin-right:.5em;vertical-align:super;line-height:1}
 /* V2.1.10：每行一个 nowrap 块——行数由切行数组决定，不靠自然折行 */
 .article .body p .ln{display:block;white-space:nowrap;overflow:hidden}
-.body p .ln.cont{padding-left:1em}
+.body p .ln.cont{padding-left:0}   /* 换行行与首行齐左（V2.2.5，同 display.html） */
 .article .foot{display:flex;justify-content:flex-end;font-size:.68rem;opacity:.5;min-height:1.4em}
 
 /* ── 板书 ── */
@@ -221,11 +221,17 @@ body{font-family:var(--ui)}
   // V2.2.19（产品 V2.1.15 定稿）：续行悬挂缩进。每节**首行顶格**、字宽上限 `c`；
   // 节内折行（第 2 行及以后）与 `unit=page` 页切后的续行都缩 1 字符 ⇒ 有效字数 `c−1`。
   // 缩进是**样式不是字符**：正文文本里不插入任何空格/全角空格，复制出来仍是原文。
-  function sliceHang(text, c){
-    var out=[], cur='', acc=0, lim=c;
+  // 首行带行内节号（.sn 0.62em 字 + .5em 右距）。节号占的宽度要从首行字数里扣掉，
+  // 否则「c 个字 + 节号」超过可用宽，行尾会被 overflow:hidden 静默裁掉（V2.2.5 修）。
+  function snCharCost(sn){
+    var k=String(sn||'').replace(/\D/g,'').length || 1;
+    return Math.ceil(k*0.31 + 0.5);
+  }
+  function sliceHang(text, c, sn){
+    var out=[], cur='', acc=0, lim=Math.max(1, c - snCharCost(sn));
     for(var i=0;i<text.length;i++){
       var w=charW(text.charAt(i));
-      if(cur && acc+w > lim+1e-9){ out.push(cur); cur=''; acc=0; lim=Math.max(1,c-1); }
+      if(cur && acc+w > lim+1e-9){ out.push(cur); cur=''; acc=0; lim=c; }   // 齐左后不再少算 1 字
       cur+=text.charAt(i); acc+=w;
     }
     out.push(cur);
@@ -275,7 +281,7 @@ body{font-family:var(--ui)}
     var vs=VERSES[a.ch]||VERSES[23]; A.verses=vs;
     var cpl=cplNow(artBody());          // V2.2.17：不是 #surface（含 5vw padding）
     flow.innerHTML=vs.map(function(v){
-      var ls=sliceHang(v[1], cpl);
+      var ls=sliceHang(v[1], cpl, v[0]);
       return '<p data-lines="'+ls.length+'">'+ls.map(function(l,i){
         return '<span class="ln'+(i===0?'':' cont')+'">'+(i===0?'<span class="sn">'+v[0]+'</span>':'')+esc(l)+'</span>';}).join('')+'</p>';
     }).join('');
@@ -522,7 +528,7 @@ body{font-family:var(--ui)}
       html='<div class="article"><div class="head"><b>'+esc(a.t)+'</b><span class="seg"></span>'+
         '<span style="margin-left:auto">'+(S.article.cast?'● 已上屏':'○ 预览（未上屏）')+'</span></div>'+
         '<div class="body"><div class="flow">'+vs.map(function(v){
-          var ls=sliceHang(v[1], cplNow(artBody()));
+          var ls=sliceHang(v[1], cplNow(artBody()), v[0]);
           return '<p data-lines="'+ls.length+'">'+ls.map(function(l,i){
             return '<span class="ln'+(i===0?'':' cont')+'">'+(i===0?'<span class="sn">'+v[0]+'</span>':'')+esc(l)+'</span>';}).join('')+'</p>';}).join('')+'</div></div>'+
         '<div class="foot"></div></div>';

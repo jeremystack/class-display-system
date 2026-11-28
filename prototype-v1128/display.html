@@ -126,6 +126,25 @@ body.day .idlecard{background:rgba(255,253,247,.82);box-shadow:0 10px 40px rgba(
 #exit-dlg button{font:600 .95rem/1 var(--font-ui);padding:.8rem 1.6rem;border-radius:10px;border:1px solid rgba(255,255,255,.22);
   background:transparent;color:#e8ecf2;cursor:pointer;min-height:48px}
 #exit-dlg button.danger{border-color:#a33;background:#3a1414;color:#ffd7d7}
+/* 三击改码弹层（V2.2.5）：切换控制端用；可取消 */
+#rebind{position:fixed;inset:0;z-index:70;background:rgba(8,10,14,.82);display:flex;align-items:center;justify-content:center;
+  backdrop-filter:blur(2px)}
+#rebind[hidden]{display:none}
+#rebind .rbdlg{background:#171b22;border:1px solid rgba(255,255,255,.16);border-radius:16px;padding:2rem 2.2rem 1.6rem;
+  width:min(560px,92vw);text-align:center;color:#e8ecf2;box-shadow:0 24px 80px rgba(0,0,0,.6)}
+#rebind h2{margin:0 0 .5rem;font-size:1.15rem;font-weight:600}
+#rebind p{margin:0 0 1.4rem;color:#a9b3c2;font-size:.88rem;line-height:1.65}
+#rebind .rdigits{display:flex;gap:10px;justify-content:center;margin-bottom:1rem}
+#rebind .rdigits input{width:min(56px,11vw);height:min(76px,15vw);text-align:center;
+  font:600 min(2rem,6vw)/1 ui-monospace,Menlo,monospace;color:#e8ecf2;
+  background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.22);border-radius:12px;outline:none}
+#rebind .rdigits input:focus{border-color:var(--accent);background:rgba(255,255,255,.1)}
+#rebind .rerr{color:#ff9a9a;font-size:.82rem;min-height:1.3rem;margin-bottom:.9rem}
+#rebind .rrow{display:flex;gap:.8rem;justify-content:center}
+#rebind button{font:600 .95rem/1 var(--font-ui);padding:.85rem 1.7rem;border-radius:10px;
+  border:1px solid rgba(255,255,255,.22);background:transparent;color:#e8ecf2;cursor:pointer;min-height:48px}
+#rebind button.ok{border-color:var(--accent);background:var(--accent);color:#06101f}
+/* 全屏切换时的一行提示（1.2s 自动消失，不打断） */
 #dbg{position:fixed;right:10px;top:10px;font:11px/1.5 ui-monospace,monospace;color:rgba(255,255,255,.45);text-align:right;display:none}
 #dbg.show{display:block}
 </style>
@@ -159,6 +178,25 @@ body.day .idlecard{background:rgba(255,253,247,.82);box-shadow:0 10px 40px rgba(
       <h2>确定解除本屏接管？</h2>
       <p>解除后需重新输入控制码。</p>
       <div class="row"><button id="exit-no" type="button">取消</button><button id="exit-yes" type="button" class="danger">解除接管</button></div>
+    </div>
+  </div>
+  <div id="rebind" hidden role="dialog" aria-modal="true" aria-labelledby="rbTitle">
+    <div class="rbdlg">
+      <h2 id="rbTitle">输入新的控制码</h2>
+      <p>把这台屏幕切换到另一台控制端。不想换就点「取消」，屏幕保持现状。</p>
+      <div class="rdigits" id="rdigits">
+        <input inputmode="numeric" maxlength="1" autocomplete="off">
+        <input inputmode="numeric" maxlength="1" autocomplete="off">
+        <input inputmode="numeric" maxlength="1" autocomplete="off">
+        <input inputmode="numeric" maxlength="1" autocomplete="off">
+        <input inputmode="numeric" maxlength="1" autocomplete="off">
+        <input inputmode="numeric" maxlength="1" autocomplete="off">
+      </div>
+      <div class="rerr" id="rerr"></div>
+      <div class="rrow">
+        <button type="button" id="rbCancel">取消</button>
+        <button type="button" class="ok" id="rbOk">切换</button>
+      </div>
     </div>
   </div>
   <div id="sys"></div>
@@ -314,7 +352,7 @@ body.day .idlecard{background:rgba(255,253,247,.82);box-shadow:0 10px 40px rgba(
           +'<div class="idle"><div class="idlecard"><div class="room">主堂 · 显示终端</div>'
           +'<div class="clock" id="dclock">'+clockText()+'</div>'
           +'<div class="wait">等待控制台</div>'
-          +'<div class="hint">换人操作：右下角长按 3 秒 → 二次确认 → 回输码页 → 输自己的 6 位码</div></div></div></div>';
+          +'<div class="hint">换人操作：<b>连续三击屏幕</b> 直接输新码；或右下角长按 3 秒 → 二次确认 → 回输码页<br>双击＝全屏 / 还原</div></div></div></div>';
       }
       c.innerHTML=html;
     } else if(S.scene==='music'){
@@ -559,6 +597,101 @@ body.day .idlecard{background:rgba(255,253,247,.82);box-shadow:0 10px 40px rgba(
       try{ LS.removeItem('cds.bound'); }catch(e){}
       post({kind:'unbound'}); showEntry(); sys('已解除接管，请输码', false, 2500);
     });
+  })();
+
+
+  // ── 屏幕手势（V2.2.5）───────────────────────────────────────────────
+  // 双击＝全屏 / 还原；三击＝输入新的控制码（可取消，用于切换控制端）。
+  // 三击的第 1、2 次点击会先被计入「双击待决」，所以双击要等第 3 次点击的窗口过去
+  // 才能执行——否则三击会先触发一次全屏。窗口 340ms（含手抖余量，短于系统双击 500ms）。
+  (function(){
+    var GAP=340, n=0, timer=null, fullPending=false;
+    function fullEl(){
+      var d=document;
+      return d.fullscreenElement || d.webkitFullscreenElement || d.msFullscreenElement || null;
+    }
+    function toggleFull(){
+      var d=document, el=d.documentElement;
+      try{
+        if(!fullEl()){
+          if(el.requestFullscreen) { el.requestFullscreen().catch(function(){}); }
+          else if(el.webkitRequestFullscreen){ el.webkitRequestFullscreen(); }
+          else { sys('此浏览器不支持全屏（Kiosk 模式下本就全屏）', true, 2200); return; }
+          sys('已全屏 · 再双击还原', false, 1400);
+        } else {
+          if(d.exitFullscreen){ d.exitFullscreen().catch(function(){}); }
+          else if(d.webkitExitFullscreen){ d.webkitExitFullscreen(); }
+          sys('已退出全屏', false, 1400);
+        }
+      }catch(e){ sys('全屏切换失败：'+e.message, true, 2400); }
+    }
+    // 三击改码弹层
+    var rb=$('rebind'), rin=[].slice.call(document.querySelectorAll('#rdigits input'));
+    function rbValue(){ return rin.map(function(i){ return i.value; }).join(''); }
+    function rbOpen(){
+      if(!$('entry').hidden) return;                 // 还没接管：本来就在输码页
+      rin.forEach(function(i){ i.value=''; });
+      $('rerr').textContent='';
+      rb.hidden=false;
+      setTimeout(function(){ rin[0].focus(); }, 30);
+    }
+    function rbClose(){ rb.hidden=true; rin.forEach(function(i){ i.value=''; }); $('rerr').textContent=''; }
+    function rbSubmit(){
+      var v=rbValue();
+      if(v.length!==6){ $('rerr').textContent='请输入 6 位数字'; return; }
+      var cur=LS.getItem('cds.v1128.code');
+      if(cur===v){ $('rerr').textContent='这就是当前控制码，屏幕已经连着这台控制端'; return; }
+      try{ LS.setItem('cds.v1128.code', v); LS.setItem('cds.bound','1'); }catch(e){}
+      // 切换控制端：屏上内容一律清回待机，避免残留上一台控制端的歌/文章/板书
+      S.scene='standby';
+      S.music.playing=false; S.music.pos=0; S.music.stage='bg';
+      S.article.cast=false; S.cast.active=false;
+      rbClose(); showContent();
+      post({kind:'rebind', code:v, deviceId:deviceId()});
+      sys('已切换到新的控制端', false, 2200);
+    }
+    rin.forEach(function(inp,i){
+      inp.addEventListener('input', function(){
+        inp.value=inp.value.replace(/\D/g,'').slice(0,1);
+        if(inp.value && i<rin.length-1) rin[i+1].focus();
+        if(rbValue().length===6) rbSubmit();
+      });
+      inp.addEventListener('keydown', function(e){
+        if(e.key==='Backspace' && !inp.value && i>0){ rin[i-1].focus(); rin[i-1].value=''; e.preventDefault(); }
+        if(e.key==='Enter') rbSubmit();
+        if(e.key==='Escape') rbClose();
+      });
+      inp.addEventListener('paste', function(e){
+        var t=(e.clipboardData||window.clipboardData).getData('text').replace(/\D/g,'').slice(0,6);
+        if(t){ e.preventDefault(); t.split('').forEach(function(ch,k){ if(rin[k]) rin[k].value=ch; }); (rin[Math.min(t.length,5)]||rin[5]).focus(); }
+      });
+    });
+    $('rbCancel').addEventListener('click', rbClose);
+    $('rbOk').addEventListener('click', rbSubmit);
+    // 三击手势监听：只认内容层（输码页不参与）＋避开弹层自身
+    function onTap(e){
+      if(rb.hidden===false) return;
+      if(!$('exit-dlg').hidden) return;
+      if(e.target.closest && e.target.closest('#rebind,#exit-dlg')) return;
+      if(!$('entry').hidden) return;
+      n++;
+      if(n===1){
+        clearTimeout(timer);
+        timer=setTimeout(function(){ n=0; }, GAP);
+      } else if(n===2){
+        clearTimeout(timer);
+        fullPending=true;
+        timer=setTimeout(function(){ n=0; if(fullPending){ fullPending=false; toggleFull(); } }, GAP);
+      } else if(n>=3){
+        clearTimeout(timer); n=0; fullPending=false;
+        rbOpen();
+      }
+    }
+    document.addEventListener('click', onTap, true);
+    document.addEventListener('keydown', function(e){
+      if(e.key==='Escape' && rb.hidden===false) rbClose();
+    });
+    window.__cdsGesture={ open:rbOpen, close:rbClose, submit:rbSubmit, full:toggleFull };   // 原型自测用
   })();
 
   // ── 演示深链 ──
